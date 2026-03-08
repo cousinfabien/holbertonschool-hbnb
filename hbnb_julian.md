@@ -473,3 +473,8 @@ Cuando dejas el nombre vacío en Swagger, pasa esto:
 5.   El rebote: El error rebota hacia arriba, sale del Modelo, atraviesa la Fachada y llega al `try/except` que acabamos de poner en `users.py`.
 6.   La captura: `users.py` atrapa el error, extrae el texto (`str(e)`) que el Modelo gritó, y se lo devuelve a Swagger como un bonito JSON 400. 
 ### Outcome
+
+
+---
+---
+
