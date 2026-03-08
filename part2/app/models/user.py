@@ -23,5 +23,17 @@ class User(BaseModel):
         self.places = []
 
     def update_profile(self, data):
-        """Specific method to update user profile"""
+        """Update user profile with validation"""
+        if "first_name" in data:
+            if not data["first_name"] or len(data["first_name"]) > 50:
+                raise ValueError("Invalid first_name")
+
+        if "last_name" in data:
+            if not data["last_name"] or len(data["last_name"]) > 50:
+                raise ValueError("Invalid last_name")
+
+        if "email" in data:
+            if not data["email"] or not re.match(r"[^@]+@[^@]+\.[^@]+", data["email"]):
+                raise ValueError("Invalid email")
+        # All validations passed, now apply the changes and update the timestamp
         self.update(data)

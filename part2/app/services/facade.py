@@ -65,22 +65,24 @@ class HBnBFacade:
         """
         Update an existing user.
         Returns None if user does not exist.
-        Raises ValueError if email already exists.
+        Raises ValueError if data is invalid or email already exists.
         """
         user = self.user_repo.get(user_id)
 
         if not user:
             return None
 
-        # Check email uniqueness if modified
+        # Check email uniqueness before updating
+        # This must be done here in the Facade because the model
+        # doesn't have access to the repository to check other users.
         if "email" in user_data:
             existing_user = self.get_user_by_email(user_data["email"])
             if existing_user and existing_user.id != user_id:
                 raise ValueError("Email already registered")
-        # The update operation must be outside the email condition block 
-        # to ensure other attributes (like first_name) are still updated even if no email is provided.
-        updated_user = self.user_repo.update(user_id, user_data)
-        return updated_user
+        # Delegate validation and update to the model.
+        # update_profile validates all fields before applying changes.
+        user.update_profile(user_data)
+        return user
     
     # -------------------------
     # AMENITY CRUD
@@ -110,14 +112,16 @@ class HBnBFacade:
         if not amenity:
             return None
 
-        # Check for duplication if the name is changed
+        # Check name uniqueness before updating.
+        # Done here because the model doesn't have access to the repository.
         if "name" in amenity_data:
             existing = self.amenity_repo.get_by_attribute("name", amenity_data["name"])
             if existing and existing.id != amenity_id:
                 raise ValueError("Amenity with this name already exists")
 
-        updated_amenity = self.amenity_repo.update(amenity_id, amenity_data)
-        return updated_amenity
+        # Delegate validation and update to the model.
+        amenity.update_amenity(amenity_data)
+        return amenity
     
     # ==========================================
     # PLACES CRUD
@@ -218,14 +222,17 @@ class HBnBFacade:
                 value = place_data[field]
 
                 # Validation of fields
-                if field == 'price' and value < 0:
-                    raise ValueError("Price must be >= 0")
+                if field == 'title':
+                    if not value or len(value) > 100:
+                        raise ValueError("Invalid title")
+                if field == 'price' and value <= 0:
+                    raise ValueError("Price must be positive")
                 if field == 'latitude' and not (-90 <= value <= 90):
                     raise ValueError("Latitude must be between -90 and 90")
                 if field == 'longitude' and not (-180 <= value <= 180):
                     raise ValueError("Longitude must be between -180 and 180")
 
-                # Verify amenities
+                # Verify amenities  
                 if field == 'amenities':
                     amenities_list = []
                     for amenity_id in value:
@@ -237,8 +244,9 @@ class HBnBFacade:
                 else:
                     setattr(place, field, value)
 
-        # Save updated place using the repository's update method
-        return self.place_repo.update(place_id, place_data)
+        # Delegate validation and update to the model
+        place.update_details(place_data)
+        return place
 
     # -------------------------
     # REVIEW CRUD
@@ -293,11 +301,9 @@ class HBnBFacade:
         if review is None:
             return None
 
-        if 'rating' in review_data:
-            if not (1 <= review_data['rating'] <= 5):
-                raise ValueError("Rating must be between 1 and 5")
-
-        return self.review_repo.update(review_id, review_data)
+        # Delegate validation and update to the model
+        review.update_review(review_data)
+        return review
 
     def delete_review(self, review_id):
         review = self.review_repo.get(review_id)

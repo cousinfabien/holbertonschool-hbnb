@@ -175,6 +175,16 @@ class TestUsers(TestBase):
         self.assertEqual(res.status_code, 400)
         self.assertIn('Email already registered', self.json(res)['error'])
 
+    def test_11b_update_user_invalid_email_400(self):
+        """PUT /users/:id - Invalid email format should return 400."""
+        res = self.put(f'/api/v1/users/{TestBase.user_id}', {
+            'first_name': 'Johnny',
+            'last_name': 'Doe',
+            'email': 'not-a-valid-email'
+        })
+        self.assertEqual(res.status_code, 400)
+        self.assertIn('error', self.json(res))
+    
     def test_12_update_user_not_found_404(self):
         """PUT /users/:id - Update nonexistent user should return 404."""
         res = self.put('/api/v1/users/nonexistent-id-0000', {
@@ -267,6 +277,13 @@ class TestAmenities(TestBase):
         })
         self.assertEqual(res.status_code, 400)
 
+    def test_12_update_amenity_empty_name_400(self):
+        """PUT /amenities/:id - Empty name should return 400."""
+        res = self.put(f'/api/v1/amenities/{TestBase.amenity_id}', {
+            'name': ''
+        })
+        self.assertEqual(res.status_code, 400)
+        self.assertIn('error', self.json(res))
 
 # =============================================================================
 # PLACES
@@ -422,6 +439,20 @@ class TestPlaces(TestBase):
         })
         self.assertEqual(res.status_code, 400)
 
+    def test_14b_update_place_invalid_latitude_400(self):
+        """PUT /places/:id - Latitude out of range should return 400."""
+        res = self.put(f'/api/v1/places/{TestBase.place_id}', {
+            'latitude': 999.0
+        })
+        self.assertEqual(res.status_code, 400)
+
+    def test_14c_update_place_invalid_longitude_400(self):
+        """PUT /places/:id - Longitude out of range should return 400."""
+        res = self.put(f'/api/v1/places/{TestBase.place_id}', {
+            'longitude': 999.0
+        })
+        self.assertEqual(res.status_code, 400)
+
     def test_15_get_reviews_by_place_200(self):
         """GET /places/:id/reviews - Get reviews for a place should return 200."""
         res = self.get(f'/api/v1/places/{TestBase.place_id}/reviews')
@@ -549,6 +580,17 @@ class TestReviews(TestBase):
             'place_id': TestBase.place_id
         })
         self.assertEqual(res.status_code, 400)
+
+    def test_11b_update_review_empty_text_400(self):
+        """PUT /reviews/:id - Empty text should return 400."""
+        res = self.put(f'/api/v1/reviews/{TestBase.review_id}', {
+            'text': '',
+            'rating': 5,
+            'user_id': TestBase.user_id_2,
+            'place_id': TestBase.place_id
+        })
+        self.assertEqual(res.status_code, 400)
+        self.assertIn('error', self.json(res))
 
     def test_12_update_review_not_found_404(self):
         """PUT /reviews/:id - Update nonexistent review should return 404."""

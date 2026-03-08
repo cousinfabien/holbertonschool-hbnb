@@ -28,3 +28,15 @@ class Review(BaseModel):
         if not isinstance(rating, int) or not (1 <= rating <= 5):
             # Missing raise added here!
             raise ValueError("Rating must be an integer between 1 and 5")
+
+    def update_review(self, data):
+        """Update review with validation"""
+        if "text" in data:
+            if not data["text"] or not data["text"].strip():
+                raise ValueError("text is required")
+
+        if "rating" in data:
+            self.validate_rating(data["rating"])
+
+        # All validations passed, now apply the changes and update the timestamp
+        self.update(data)

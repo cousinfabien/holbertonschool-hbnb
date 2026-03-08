@@ -53,5 +53,34 @@ class Place(BaseModel):
         self.amenities.append(amenity)
 
     def update_details(self, data):
-        """Updates place details"""
+        """Update place details with validation"""
+        if "title" in data:
+            if not data["title"] or len(data["title"]) > 100:
+                raise ValueError("Invalid title")
+
+        if "price" in data:
+            try:
+                data["price"] = float(data["price"])
+            except (ValueError, TypeError):
+                raise ValueError("Price must be a valid number")
+            if data["price"] <= 0:
+                raise ValueError("Price must be positive")
+
+        if "latitude" in data:
+            try:
+                data["latitude"] = float(data["latitude"])
+            except (ValueError, TypeError):
+                raise ValueError("Latitude must be a valid number")
+            if not (-90 <= data["latitude"] <= 90):
+                raise ValueError("Latitude must be between -90 and 90")
+
+        if "longitude" in data:
+            try:
+                data["longitude"] = float(data["longitude"])
+            except (ValueError, TypeError):
+                raise ValueError("Longitude must be a valid number")
+            if not (-180 <= data["longitude"] <= 180):
+                raise ValueError("Longitude must be between -180 and 180")
+
+        # All validations passed, now apply the changes and update the timestamp
         self.update(data)
