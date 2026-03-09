@@ -51,7 +51,7 @@ Tres cosas:
 ---
 
 ## Archivo modificado
-### 2. `app/__init__.py`
+### `app/__init__.py`
 ```python
 from flask import Flask
 from flask_restx import Api
@@ -99,6 +99,29 @@ def create_app(config_class=app_config.DevelopmentConfig):
     +   Flask toma la clase que le pasaste (en este caso, una clase de Python con variables como `DEBUG = True` o `SECRET_KEY = '...'`) y vuelca todos esos valores dentro del diccionario interno de Flask llamado `app.config`.
         *   Flask busca todas las variables escritas en **MAYÚSCULAS** dentro de esa clase y las registra en el sistema.
         *   Centralizas todo. Si mañana necesitas cambiar la URL de la base de datos o el puerto, no tienes que buscar por todo el código; solo lo cambias en tu archivo config.py y esta línea se encarga de repartir esa información a toda la App.
+##  Recordatorio
+### `config.py`:
+Es un archivo donde guardás todas las variables de configuración de tu app en un solo lugar.  
+En vez de tener valores hardcodeados por todo el código, los centralizás acá.
+-   `import os` —  os es un módulo de Python que te permite interactuar con el sistema operativo. En tu config.py se usa específicamente para leer variables de entorno con `os.getenv()`:
+    +   Busca la variable `SECRET_KEY` en el sistema operativo (que en tu caso viene del `.env` cargado por `load_dotenv()`)
+        *   `load_dotenv()` es la función que carga el archivo `.env` y convierte cada línea en una variable de entorno del sistema operativo.
+    +   Si la encuentra, la usa
+    +   Si no la encuentra, usa el valor por defecto `'default_secret_key'`
+-   `SECRET_KEY` — una clave secreta que Flask usa para firmar cookies y tokens
+-   `DEBUG` — si está en `True` la app muestra errores detallados, en `False` los oculta
+-   En el futuro: la URL de la base de datos, configuración de email, etc.
+
+```
+.env                    load_dotenv()              os.getenv()
+─────────────────       ──────────────────         ─────────────────
+SECRET_KEY=abc123  →    carga el archivo    →      lee SECRET_KEY
+FLASK_DEBUG=True        al sistema operativo       y devuelve 'abc123'
+```
+La idea es tener distintas clases para distintos entornos:
+-   `DevelopmentConfig` — para cuando estás desarrollando localmente
+-   `ProductionConfig` — para cuando la app está en un servidor real
+
 ---
 
 ### 3. `run.py`
