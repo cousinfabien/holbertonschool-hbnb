@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 from flask_restx import Namespace, Resource, fields
+from flask_jwt_extended import jwt_required, get_jwt_identity
 # Import the shared facade instance to ensure a single in-memory data context.
 # Avoids creating multiple HBnBFacade instances with isolated state.
 from app.services import facade
@@ -11,7 +12,8 @@ api = Namespace('users', description='User operations')
 user_model = api.model('User', {
     'first_name': fields.String(required=True, description='First name of the user'),
     'last_name': fields.String(required=True, description='Last name of the user'),
-    'email': fields.String(required=True, description='Email of the user')
+    'email': fields.String(required=True, description='Email of the user'),
+    'password': fields.String(required=True, description='Password of the user')
 })
 
 # ------------------- User List / Create -------------------
@@ -23,7 +25,6 @@ class UserList(Resource):
     def post(self):
         """Register a new user"""
         user_data = api.payload
-
         try:
             # Create a new user
             # The facade checks for duplicates and raises ValueError if found
@@ -42,13 +43,12 @@ class UserList(Resource):
     def get(self):
         """Retrieve all users"""
         users = facade.get_all_users()
-        users_list = [{
+        return [{
             'id': user.id,
             'first_name': user.first_name,
             'last_name': user.last_name,
             'email': user.email
-        } for user in users]
-        return users_list, 200
+        } for user in users], 200
 
 # ------------------- Retrieve / Update a single user -------------------
 @api.route('/<string:user_id>')
@@ -60,7 +60,6 @@ class UserResource(Resource):
         user = facade.get_user(user_id)
         if not user:
             return {'error': 'User not found'}, 404
-
         return {
             'id': user.id,
             'first_name': user.first_name,
@@ -68,13 +67,26 @@ class UserResource(Resource):
             'email': user.email
         }, 200
 
+    @jwt_required()
     @api.expect(user_model, validate=True)
     @api.response(200, 'User updated successfully')
     @api.response(400, 'Invalid input data or email already registered')
+    @api.response(403, 'Unauthorized action')
     @api.response(404, 'User not found')
     def put(self, user_id):
-        """Update an existing user"""
+        """Update own user details (authenticated users only)"""
+        current_user = get_jwt_identity()
+
+        # Check that the user is modifying their own data
+        if user_id != current_user:
+            return {'error': 'Unauthorized action'}, 403
+
         user_data = api.payload
+
+        # Prevent modifying email or password
+        if 'email' in user_data or 'password' in user_data:
+            return {'error': 'You cannot modify email or password'}, 400
+
         # We delegate the existence and email validation directly to the Facade
         # Update the user
         try:
@@ -83,6 +95,7 @@ class UserResource(Resource):
             if not updated_user:
                 return {'error': 'User not found'}, 404
         except ValueError as e:
+            
             # The facade raises a ValueError if the email is taken
             return {'error': str(e)}, 400
 

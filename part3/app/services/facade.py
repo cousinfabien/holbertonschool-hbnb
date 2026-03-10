@@ -32,6 +32,7 @@ class HBnBFacade:
         # If the model finds invalid data (like bad email format), 
         # it will automatically raise a ValueError here.
         user = User(**user_data)
+        user.hash_password(user_data['password'])
         # We save it in the database
         self.user_repo.add(user)
         return user

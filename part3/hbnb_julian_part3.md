@@ -169,41 +169,1007 @@ La app debe arrancar en `http://127.0.0.1:5000/api/v1/` sin errores.
 
 
 ---
+---
 
-#   Task 1
+# Task 1 — Modify the User Model to Include Password Hashing
+## ¿Qué es el hashing de contraseñas?
+
+Cuando un usuario se registra, **nunca** se guarda la contraseña tal cual en la base de datos.  
+Si alguien accede a la base de datos y ve `password: "micontraseña123"` es un problema de seguridad grave.
+
+En cambio se guarda un **hash**, que es una versión encriptada e irreversible:
+
+```
+"micontraseña123"  →  bcrypt  →  "$2b$12$eKbB2dXk..."
+```
+
+Cuando el usuario hace login, `bcrypt` compara la contraseña ingresada con el hash guardado.  
+**Nunca se puede revertir el hash** para obtener la contraseña original.
 
 ---
 
-#   Task 2
+## ¿Qué es `bcrypt`?
+
+`bcrypt` es un algoritmo de hashing diseñado específicamente para contraseñas. A diferencia de otros algoritmos (como MD5 o SHA), bcrypt es **lento por diseño**, lo que hace que los ataques de fuerza bruta sean mucho más difíciles.
+
+`flask-bcrypt` es el plugin que integra bcrypt con Flask.
 
 ---
 
-#   Task 3
+## Archivos modificados
+### 1. `app/__init__.py`
+Se registra bcrypt como plugin de la app, igual que se hace con otras extensiones de Flask.
 
+**Antes:**
+```python
+from flask import Flask
+from flask_restx import Api
+from app.api.v1.users import api as users_ns
+from app.api.v1.amenities import api as amenities_ns
+from app.api.v1.places import api as places_ns
+from app.api.v1.reviews import api as reviews_ns
+import config as app_config
+
+def create_app(config_class=app_config.DevelopmentConfig):
+    app = Flask(__name__)
+    app.config.from_object(config_class)
+
+    api = Api(
+        app,
+        version='1.0',
+        title='HBnB API',
+        description='HBnB Application API',
+        doc='/api/v1/'
+    )
+
+    api.add_namespace(users_ns, path='/api/v1/users')
+    api.add_namespace(amenities_ns, path='/api/v1/amenities')
+    api.add_namespace(places_ns, path='/api/v1/places')
+    api.add_namespace(reviews_ns, path='/api/v1/reviews')
+
+    return app
+```
+
+**Después:**
+```python
+from flask import Flask
+from flask_restx import Api
+from flask_bcrypt import Bcrypt
+from app.api.v1.users import api as users_ns
+from app.api.v1.amenities import api as amenities_ns
+from app.api.v1.places import api as places_ns
+from app.api.v1.reviews import api as reviews_ns
+import config as app_config
+
+bcrypt = Bcrypt()
+
+def create_app(config_class=app_config.DevelopmentConfig):
+    app = Flask(__name__)
+    app.config.from_object(config_class)
+
+    bcrypt.init_app(app)
+
+    api = Api(
+        app,
+        version='1.0',
+        title='HBnB API',
+        description='HBnB Application API',
+        doc='/api/v1/'
+    )
+
+    api.add_namespace(users_ns, path='/api/v1/users')
+    api.add_namespace(amenities_ns, path='/api/v1/amenities')
+    api.add_namespace(places_ns, path='/api/v1/places')
+    api.add_namespace(reviews_ns, path='/api/v1/reviews')
+
+    return app
+```
+
+**¿Por qué `bcrypt = Bcrypt()` está fuera de `create_app()`?**
+Porque otros archivos (como `user.py`) necesitan importar `bcrypt` para usarlo. Si estuviera dentro de `create_app()` no sería accesible desde afuera.
+
+**¿Por qué `bcrypt.init_app(app)`?**
+Es el patrón estándar de Flask para registrar extensiones.  
+-   Primero se crea la extensión vacía (`Bcrypt()`)
+-   Se la conecta a la app concreta (`init_app(app)`). 
+Esto permite usar la extensión con el Application Factory pattern.
+
+
+
+---
+
+### 2. `app/models/user.py`
+
+Se agregan dos métodos al modelo `User`:
+
+**Antes:**
+```python
+#!/usr/bin/python3
+import re
+from app.models.base_model import BaseModel
+
+class User(BaseModel):
+    def __init__(self, first_name, last_name, email, password="", is_admin=False):
+        super().__init__()
+
+        if not first_name or len(first_name) > 50:
+            raise ValueError("Invalid first_name")
+        if not last_name or len(last_name) > 50:
+            raise ValueError("Invalid last_name")
+        if not email or not re.match(r"[^@]+@[^@]+\.[^@]+", email):
+            raise ValueError("Invalid email")
+
+        self.first_name = first_name
+        self.last_name = last_name
+        self.email = email
+        self.password = password
+        self.is_admin = is_admin
+        self.places = []
+
+    def update_profile(self, data):
+        """Update user profile with validation"""
+        if "first_name" in data:
+            if not data["first_name"] or len(data["first_name"]) > 50:
+                raise ValueError("Invalid first_name")
+        if "last_name" in data:
+            if not data["last_name"] or len(data["last_name"]) > 50:
+                raise ValueError("Invalid last_name")
+        if "email" in data:
+            if not data["email"] or not re.match(r"[^@]+@[^@]+\.[^@]+", data["email"]):
+                raise ValueError("Invalid email")
+        self.update(data)
+```
+
+**Después:**
+```python
+#!/usr/bin/python3
+import re
+from app.models.base_model import BaseModel
+from app import bcrypt
+
+class User(BaseModel):
+    def __init__(self, first_name, last_name, email, password="", is_admin=False):
+        super().__init__()
+
+        if not first_name or len(first_name) > 50:
+            raise ValueError("Invalid first_name")
+        if not last_name or len(last_name) > 50:
+            raise ValueError("Invalid last_name")
+        if not email or not re.match(r"[^@]+@[^@]+\.[^@]+", email):
+            raise ValueError("Invalid email")
+
+        self.first_name = first_name
+        self.last_name = last_name
+        self.email = email
+        self.password = password
+        self.is_admin = is_admin
+        self.places = []
+
+    def hash_password(self, password):
+        """Hashes the password before storing it."""
+        self.password = bcrypt.generate_password_hash(password).decode('utf-8')
+
+    def verify_password(self, password):
+        """Verifies if the provided password matches the hashed password."""
+        return bcrypt.check_password_hash(self.password, password)
+
+    def update_profile(self, data):
+        """Update user profile with validation"""
+        if "first_name" in data:
+            if not data["first_name"] or len(data["first_name"]) > 50:
+                raise ValueError("Invalid first_name")
+        if "last_name" in data:
+            if not data["last_name"] or len(data["last_name"]) > 50:
+                raise ValueError("Invalid last_name")
+        if "email" in data:
+            if not data["email"] or not re.match(r"[^@]+@[^@]+\.[^@]+", data["email"]):
+                raise ValueError("Invalid email")
+        self.update(data)
+```
+
+**¿Qué hace `hash_password()`?**
+Toma la contraseña en texto plano, la hashea con bcrypt y la guarda en `self.password`.  
+El `.decode('utf-8')` convierte el resultado de bytes a string para poder guardarlo.
+-   `bcrypt.generate_password_hash(password)`: 
+    +   Toma la contraseña (ej: "`Hola123`") y le aplica un algoritmo matemático complejo.
+    +   El resultado es una cadena larga de caracteres aleatorios (el hash).
+    +   **Dato curioso**: 
+        *   Aunque uses la misma contraseña, `bcrypt` añade un "salt" (una semilla aleatoria) para que el hash siempre sea diferente, aumentando la seguridad.
+-   `.decode('utf-8')`: 
+    +   El resultado de generar el hash es un objeto de tipo bytes.
+    +   Como queremos guardarlo en nuestra base de datos (o en memoria) como una cadena de texto normal, lo decodificamos a UTF-8.
+-   `self.password = ...`: 
+    +   Finalmente, sobreescribe el atributo de la instancia.
+    +   Ahora, en lugar de guardar "`Hola123`", guardas algo como `$2b$12$KIXl.xxx...`.
+
+**¿Qué hace `verify_password()`?**
+Compara la contraseña ingresada con el hash guardado.  
+Devuelve `True` si coinciden, `False` si no.  
+Se usa en el login (Task 2).
+-   `bcrypt.check_password_hash(self.password, password)`:
+1.   Toma el hash que tienes guardado (`self.password`).
+2.   Toma la contraseña que el usuario acaba de escribir en el formulario de login (`password`).
+3.   Internamente, `bcrypt` sabe cómo comparar ambas para ver si coinciden sin necesidad de conocer la clave original.
+-   `return ...`: Devuelve `True` si coinciden o `False` si el usuario se equivocó.
+---
+
+### 3. `app/api/v1/users.py`
+
+Dos cambios:
+- El endpoint `POST /api/v1/users/` ahora acepta `password` y la hashea antes de guardar
+- Ningún endpoint devuelve el campo `password` en la respuesta
+
+**Antes** (user_model y POST):
+```python
+user_model = api.model('User', {
+    'first_name': fields.String(required=True, description='First name of the user'),
+    'last_name': fields.String(required=True, description='Last name of the user'),
+    'email': fields.String(required=True, description='Email of the user')
+})
+
+def post(self):
+    """Register a new user"""
+    user_data = api.payload
+    try:
+        new_user = facade.create_user(user_data)
+        return {
+            'id': new_user.id,
+            'first_name': new_user.first_name,
+            'last_name': new_user.last_name,
+            'email': new_user.email
+        }, 201
+    except ValueError as e:
+        return {'error': str(e)}, 400
+```
+
+**Después:**
+```python
+user_model = api.model('User', {
+    'first_name': fields.String(required=True, description='First name of the user'),
+    'last_name': fields.String(required=True, description='Last name of the user'),
+    'email': fields.String(required=True, description='Email of the user'),
+    'password': fields.String(required=True, description='Password of the user')
+})
+
+def post(self):
+    """Register a new user"""
+    user_data = api.payload
+    try:
+        new_user = facade.create_user(user_data)
+        return {
+            'id': new_user.id,
+            'first_name': new_user.first_name,
+            'last_name': new_user.last_name,
+            'email': new_user.email
+        }, 201
+    except ValueError as e:
+        return {'error': str(e)}, 400
+```
+
+**Nota:** la respuesta del POST no incluye `password`. Esto es intencional — nunca se devuelve la contraseña, ni siquiera hasheada.
+
+---
+
+### 4. `app/services/facade.py` — método `create_user`
+
+También hay que actualizar el facade para que hashee la contraseña al crear un usuario.
+
+**Antes:**
+```python
+def create_user(self, user_data):
+    user = User(**user_data)
+    self.user_repo.add(user)
+    return user
+```
+
+**Después:**
+```python
+def create_user(self, user_data):
+    user = User(**user_data)
+    user.hash_password(user_data['password'])
+    self.user_repo.add(user)
+    return user
+```
+
+**¿Por qué se hashea en el facade y no en el modelo?**
+Porque el `__init__` del modelo acepta `password=""` como valor por defecto (para cuando se crea un usuario sin contraseña en tests). El facade es el punto de entrada desde la API, así que es el lugar correcto para aplicar la lógica de negocio de hashear.
+
+---
+
+## Flujo completo del registro
+
+```
+POST /api/v1/users/
+    │
+    ▼
+users.py (API)
+    recibe: {first_name, last_name, email, password}
+    │
+    ▼
+facade.create_user(user_data)
+    crea User() → hashea password → guarda en repo
+    │
+    ▼
+respuesta: {id, first_name, last_name, email}
+    (sin password)
+```
+
+---
+---
+
+# Task 2 — Implement JWT Authentication
+## ¿Qué es JWT?
+
+**JWT (JSON Web Token)** es un sistema de autenticación basado en tokens.  
+En vez de guardar sesiones en el servidor, el servidor genera un token firmado que el cliente guarda y envía en cada request.
+
+El token tiene 3 partes separadas por puntos:
+```
+eyJhbGciOiJIUzI1NiJ9.eyJpZCI6IjEyMyIsImlzX2FkbWluIjpmYWxzZX0.abc123
+      HEADER                          PAYLOAD                    SIGNATURE
+```
+
+- **Header** — algoritmo de firma
+- **Payload** — datos del usuario (id, is_admin, expiración)
+- **Signature** — firma generada con el `SECRET_KEY` para verificar que el token no fue modificado
+
+**¿Por qué es seguro?** Si alguien modifica el payload, la firma ya no coincide y el servidor rechaza el token.
+
+---
+
+## Flujo completo de autenticación
+
+```
+1. Cliente envía email + password
+        │
+        ▼
+2. API verifica credenciales con verify_password()
+        │
+        ▼
+3. Si son correctas → genera JWT token con create_access_token()
+        │
+        ▼
+4. Cliente recibe el token y lo guarda
+        │
+        ▼
+5. Cliente envía el token en el header de cada request protegido:
+   Authorization: Bearer <token>
+        │
+        ▼
+6. @jwt_required() verifica el token automáticamente
+        │
+        ▼
+7. Si es válido → accede al endpoint
+   Si no es válido → 401 Unauthorized
+```
+
+---
+
+## Archivos modificados
+
+### 1. `app/__init__.py`
+
+Se agrega `JWTManager` igual que se hizo con `bcrypt` en el Task 1.
+
+**Antes (Task 1):**
+```python
+from flask import Flask
+from flask_restx import Api
+from flask_bcrypt import Bcrypt
+from app.api.v1.users import api as users_ns
+from app.api.v1.amenities import api as amenities_ns
+from app.api.v1.places import api as places_ns
+from app.api.v1.reviews import api as reviews_ns
+import config as app_config
+
+bcrypt = Bcrypt()
+
+def create_app(config_class=app_config.DevelopmentConfig):
+    app = Flask(__name__)
+    app.config.from_object(config_class)
+
+    bcrypt.init_app(app)
+
+    api = Api(app, version='1.0', title='HBnB API',
+              description='HBnB Application API', doc='/api/v1/')
+
+    api.add_namespace(users_ns, path='/api/v1/users')
+    api.add_namespace(amenities_ns, path='/api/v1/amenities')
+    api.add_namespace(places_ns, path='/api/v1/places')
+    api.add_namespace(reviews_ns, path='/api/v1/reviews')
+
+    return app
+```
+
+**Después (Task 2):**
+```python
+from flask import Flask
+from flask_restx import Api
+from flask_bcrypt import Bcrypt
+from flask_jwt_extended import JWTManager
+from app.api.v1.users import api as users_ns
+from app.api.v1.amenities import api as amenities_ns
+from app.api.v1.places import api as places_ns
+from app.api.v1.reviews import api as reviews_ns
+from app.api.v1.auth import api as auth_ns
+import config as app_config
+
+bcrypt = Bcrypt()
+jwt = JWTManager()
+
+def create_app(config_class=app_config.DevelopmentConfig):
+    app = Flask(__name__)
+    app.config.from_object(config_class)
+
+    bcrypt.init_app(app)
+    jwt.init_app(app)
+
+    api = Api(app, version='1.0', title='HBnB API',
+              description='HBnB Application API', doc='/api/v1/')
+
+    api.add_namespace(auth_ns, path='/api/v1/auth')
+    api.add_namespace(users_ns, path='/api/v1/users')
+    api.add_namespace(amenities_ns, path='/api/v1/amenities')
+    api.add_namespace(places_ns, path='/api/v1/places')
+    api.add_namespace(reviews_ns, path='/api/v1/reviews')
+
+    return app
+```
+
+**¿Por qué `JWTManager` usa `SECRET_KEY` y no `JWT_SECRET_KEY`?**
+Porque `flask-jwt-extended` busca primero `JWT_SECRET_KEY` en la config, y si no existe usa `SECRET_KEY`.  
+Como ya tenemos `SECRET_KEY` en `config.py` no hace falta agregar nada más.
+
+---
+
+### 2. `app/api/v1/auth.py` (archivo nuevo)
+
+Este archivo no existía. Se crea desde cero con el endpoint de login.
+
+```python
+#!/usr/bin/python3
+from flask_restx import Namespace, Resource, fields
+from flask_jwt_extended import create_access_token
+from app.services import facade
+
+api = Namespace('auth', description='Authentication operations')
+
+# Model for input validation and Swagger documentation
+login_model = api.model('Login', {
+    'email': fields.String(required=True, description='User email'),
+    'password': fields.String(required=True, description='User password')
+})
+
+@api.route('/login')
+class Login(Resource):
+    @api.expect(login_model)
+    @api.response(200, 'Login successful')
+    @api.response(401, 'Invalid credentials')
+    def post(self):
+        """Authenticate user and return a JWT token"""
+        credentials = api.payload
+
+        # Step 1: Retrieve the user based on the provided email
+        user = facade.get_user_by_email(credentials['email'])
+
+        # Step 2: Check if the user exists and the password is correct
+        if not user or not user.verify_password(credentials['password']):
+            return {'error': 'Invalid credentials'}, 401
+
+        # Step 3: Create a JWT token with the user's id and is_admin flag
+        access_token = create_access_token(
+            identity=str(user.id),
+            additional_claims={"is_admin": user.is_admin}
+        )
+
+        # Step 4: Return the JWT token to the client
+        return {'access_token': access_token}, 200
+```
+
+**¿Qué es `create_access_token()`?**
+Es la función de `flask-jwt-extended` que genera el token JWT. Recibe:
+- `identity` — el ID del usuario (como string). Es lo que devuelve `get_jwt_identity()` cuando se verifica el token.
+- `additional_claims` — datos extra que queremos guardar en el token, como `is_admin`.
+
+**¿Por qué `identity=str(user.id)` y no solo `user.id`?**
+Porque `flask-jwt-extended` requiere que el identity sea un string.
+
+---
+
+### 3. Endpoint de prueba `/api/v1/auth/protected` (opcional)
+
+El task sugiere crear un endpoint de prueba para verificar que el token funciona:
+
+```python
+from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
+
+@api.route('/protected')
+class ProtectedResource(Resource):
+    @jwt_required()
+    def get(self):
+        """A protected endpoint that requires a valid JWT token"""
+        current_user_id = get_jwt_identity()
+        claims = get_jwt()
+        return {
+            'message': f'Hello, user {current_user_id}',
+            'is_admin': claims.get('is_admin', False)
+        }, 200
+```
+
+**Funciones clave de `flask-jwt-extended`:**
+
+| Función | Qué devuelve |
+|---------|-------------|
+| `@jwt_required()` | Decorator que bloquea el acceso si no hay token válido |
+| `get_jwt_identity()` | El `identity` del token (el ID del usuario) |
+| `get_jwt()` | Todos los claims del token (incluye `is_admin`) |
+
+---
+
+## Diferencia entre `get_jwt_identity()` y `get_jwt()`
+
+```python
+# get_jwt_identity() devuelve solo el identity
+current_user_id = get_jwt_identity()
+# → "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+
+# get_jwt() devuelve todos los claims
+claims = get_jwt()
+# → {
+#     "sub": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+#     "is_admin": False,
+#     "exp": 1234567890,
+#     ...
+#   }
+is_admin = claims.get('is_admin', False)
+```
+
+---
+
+## Resumen de archivos del Task 2
+
+| Archivo | Qué cambia |
+|---------|------------|
+| `app/__init__.py` | Agregar `JWTManager` + registrar namespace `auth` |
+| `app/api/v1/auth.py` | Archivo nuevo con endpoint `POST /api/v1/auth/login` |
+
+---
+
+## Test con cURL
+
+**Login:**
+```bash
+curl -X POST "http://127.0.0.1:5000/api/v1/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{"email": "john@example.com", "password": "mipassword"}'
+```
+
+**Respuesta:**
+```json
+{
+    "access_token": "eyJhbGciOiJIUzI1NiJ9..."
+}
+```
+
+**Acceder a endpoint protegido:**
+```bash
+curl -X GET "http://127.0.0.1:5000/api/v1/auth/protected" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9..."
+```
+
+
+**Respuesta:**
+```json
+{
+    "message": "Hello, user 3fa85f64-5717-4562-b3fc-2c963f66afa6"
+}
+```
+
+##  **`app/__init__.py`**
+```python
+authorizations = {
+    'Bearer': {
+        'type': 'apiKey',
+        'in': 'header',
+        'name': 'Authorization',
+        'description': 'JWT token. Format: Bearer <token>'
+    }
+}
+
+api = Api(app, version='1.0', title='HBnB API',
+          description='HBnB Application API',
+          doc='/api/v1/',
+          authorizations=authorizations,
+          security='Bearer')
+```
+
+Este código le dice a Swagger cómo manejar la autenticación JWT.
+El diccionario `authorizations` define un esquema de seguridad llamado `'Bearer'` con estas propiedades:
+-   `'type': 'apiKey'` — le dice a Swagger que la autenticación es mediante una clave/token
+-   `'in': 'header'` — ese token va en el header HTTP (no en la URL ni en el body)
+-   `'name': 'Authorization'` — el nombre exacto del header es `Authorization`
+-   `'description`' — texto informativo que aparece en la UI de Swagger
+
+El `Api()` es donde se crea la aplicación Flask-RestX, y los dos parámetros nuevos son:
+-   `authorizations=authorizations` — le pasa el esquema que definiste arriba
+-   `security='Bearer'` — le dice que por defecto todos los endpoints usan ese esquema
+
+El resultado visual es que aparece el botón Authorize 🔓 en Swagger, donde podés pegar tu token una sola vez y Swagger lo incluye automáticamente en todos los requests que hagas desde la UI.
+Sin esto, Swagger no sabe que existe autenticación y no puede enviar el header `Authorization` por vos.
+
+---
+---
+
+# Task 3 — Places.py: Authenticated Endpoints
+## `/v1/places.py`
+```python
+# 1. Bloquea si no hay token
+@jwt_required()          
+def post(self):
+    # 2. Obtiene el ID del usuario logueado
+    current_user = get_jwt_identity()   
+    # 3. Lógica de negocio con validaciones de ownership
+```
+
+---
+
+### **POST** `/api/v1/places/` — Crear lugar (autenticado)
+Agregar autenticación y forzar que `owner_id` sea el usuario logueado, no el que manda el body:
+```
+token → quién soy → ese soy el owner
+```
+
+#### **Importaciones**
+```python
+from flask_jwt_extended import jwt_required, get_jwt_identity
+```
+
+#### **Errores**
+```python
+@api.response(401, 'Missing or invalid token')
+```
+#### **Cambios en POST**
+```python
+@jwt_required()
+def post(self):
+    current_user = get_jwt_identity()
+    place_data['owner_id'] = current_user
+```
+
+1. 
+```python
+# Decorator que bloquea el endpoint si no hay token válido (devuelve 401)
+@jwt_required()
+``` 
+2. 
+```python
+# get_jwt_identity(): Función que extrae el ID del usuario desde el token
+current_user = get_jwt_identity()
+# 
+place_data = request.json
+# fuerza que el owner sea el usuario logueado,
+# ignorando cualquier `owner_id` que venga en el body del request
+place_data['owner_id'] = current_user
+```
+**¿Por qué sobreescribir `owner_id`?**
+Sin esto, cualquier usuario podría enviar en el body un `owner_id` 
+de otra persona y crear un lugar en su nombre.  
+Al sobreescribirlo con el token, garantizamos que el owner siempre 
+es el usuario autenticado, sin importar lo que venga en el request.
+
+
+### **PUT** `/api/v1/places/<place_id>` — Actualizar lugar (solo el dueño)
+Autenticación + verificar que el lugar te pertenece:
+```
+token → quién soy → ¿soy el dueño del lugar? → si no, 403
+```
+#### **Cambios en PUT**
+```python
+# Bloquea si no hay token → 401
+@jwt_required()
+def put(self, place_id):
+    # get_jwt_identity(): obtiene el ID del usuario logueado
+    current_user = get_jwt_identity()
+    # Se busca el lugar en la base de datos
+    place = facade.get_place(place_id)
+    # Primero verificar que el lugar existe
+    if place is None:
+            return {'error': 'Place not found'}, 404
+    # Se compara `place.owner_id` con `current_user` (verificar ownership)
+    if place.owner_id != current_user:
+        # Si no coinciden → 403 Unauthorized
+        return {'error': 'Unauthorized action'}, 403
+        # Si coinciden → se permite la actualización
+```
+### **GET** `/api/v1/places/` y **GET** `/api/v1/places/<place_id>` — Públicos
+
+Sin cambios. No llevan `@jwt_required()` porque cualquier usuario
+puede ver los lugares sin estar autenticado.
+
+### Tabla de accesos
+
+| Endpoint     | Sin token | Token pero no es dueño |
+|--------------|-----------|------------------------|
+| POST /places | 401       | —                      |
+| PUT /places  | 401       | 403                    |
+| GET /places  | ✅ público | ✅ público             |
+
+---
+
+## `/v1/reviews.py`
+```python
+# 1. Bloquea si no hay token
+@jwt_required()
+def post(self):
+    # 2. Obtiene el ID del usuario logueado
+    current_user = get_jwt_identity()
+    # 3. Lógica de negocio con validaciones de ownership
+```
+
+---
+
+### POST `/api/v1/reviews/` — Crear review (autenticado)
+Autenticación + dos validaciones extra:
+```
+token → quién soy → ¿soy dueño del lugar? → si sí, 400
+                  → ¿ya reviewé este lugar? → si sí, 400
+```
+
+#### **Importaciones**
+```python
+from flask_jwt_extended import jwt_required, get_jwt_identity
+```
+
+#### **Errores**
+```python
+@api.response(201, 'Review successfully created')
+@api.response(400, 'Invalid input data')
+@api.response(401, 'Missing or invalid token')
+```
+
+#### **Cambios en POST**
+```python
+@jwt_required()
+def post(self):
+    current_user = get_jwt_identity()
+    review_data['user_id'] = current_user
+```
+1. Decorator
+```python
+# Decorator que bloquea el endpoint si no hay token válido (devuelve 401)
+@jwt_required()
+```
+2. Forzar `user_id`
+```python
+# Extrae el ID del usuario desde el token y lo fuerza como user_id
+current_user = get_jwt_identity()
+review_data = request.json
+review_data['user_id'] = current_user
+```
+3. Verificar `place_id`
+```python
+# Verifica que el lugar existe antes de cualquier otra validación
+place = facade.get_place(review_data['place_id'])
+if place is None:
+    return {'error': 'Place not found'}, 404
+```
+4. Dueño no puede dar review a su propio lugar
+```python
+# El dueño del lugar no puede dar un review a su propio lugar
+if place.owner_id == current_user:
+    return {'error': 'You cannot review your own place'}, 400
+```
+5. No se puede dar review al mismo lugar dos veces
+```python
+# Un usuario no puede reviewar el mismo lugar dos veces
+existing_reviews = facade.get_reviews_by_place(review_data['place_id'])
+for review in existing_reviews:
+    if review.user_id == current_user:
+        return {'error': 'You have already reviewed this place'}, 400
+```
+
+#### **¿Por qué el orden de las validaciones importa?**
+Primero verificamos que el lugar existe (404), luego que no sos el dueño (400),
+luego que no reviewaste antes (400). Si lo hacemos al revés podríamos
+tener un error al intentar acceder a `place.owner_id` cuando `place` es `None`.
+
+---
+
+### PUT `/api/v1/reviews/<review_id>` — Actualizar review (solo el autor)
+Autenticación + verificar que la review es tuya:
+```
+token → quién soy → ¿creé yo esta review? → si no, 403
+```
+
+#### **Cambios en PUT**
+```python
+# Bloquea si no hay token → 401
+@jwt_required()
+def put(self, review_id):
+    # Obtiene el ID del usuario logueado
+    current_user = get_jwt_identity()
+    # Primero verificar que la review existe
+    r = facade.get_review(review_id)
+    if r is None:
+        return {'error': 'Review not found'}, 404
+    # Verificar que el usuario es el autor
+    if r.user_id != current_user:
+        # Si no coinciden → 403 Unauthorized
+        return {'error': 'Unauthorized action'}, 403
+        # Si coinciden → se permite la actualización
+```
+
+---
+
+### DELETE `/api/v1/reviews/<review_id>` — Eliminar review (solo el autor)
+Misma lógica que el PUT, pero elimina en vez de actualizar:
+```
+token → quién soy → ¿creé yo esta review? → si no, 403
+```
+
+#### **Cambios en DELETE**
+```python
+# Bloquea si no hay token → 401
+@jwt_required()
+def delete(self, review_id):
+    current_user = get_jwt_identity()
+    # Primero verificar que la review existe
+    r = facade.get_review(review_id)
+    if r is None:
+        return {'error': 'Review not found'}, 404
+    # Verificar ownership
+    if r.user_id != current_user:
+        return {'error': 'Unauthorized action'}, 403
+    # Si coinciden → eliminar
+    facade.delete_review(review_id)
+    return {'message': 'Review deleted successfully'}, 200
+```
+
+---
+
+
+### **GET** `/api/v1/reviews/` y **GET** `/api/v1/reviews/<review_id>` — Públicos
+
+Sin cambios. No llevan `@jwt_required()` porque cualquier usuario
+puede ver las reviews sin estar autenticado.
+
+---
+
+### Tabla de accesos
+
+| Endpoint        | Sin token | Token pero no es autor |
+|-----------------|-----------|------------------------|
+| POST /reviews   | 401       | 400 (si sos dueño del lugar) |
+| PUT /reviews    | 401       | 403                    |
+| DELETE /reviews | 401       | 403                    |
+| GET /reviews    | ✅ público | ✅ público             |
+
+
+
+### **Reviews POST** — autenticación + dos validaciones extra:
+```
+token → quién soy → ¿soy dueño del lugar? → si sí, 400
+                  → ¿ya reviewé este lugar? → si sí, 400
+```
+
+### **Reviews PUT y DELETE** — autenticación + verificar que la review es tuya:
+```
+token → quién soy → ¿creé yo esta review? → si no, 403
+```
+
+---
+---
+
+## `/v1/users.py`
+```python
+# 1. Bloquea si no hay token
+@jwt_required()
+def put(self, user_id):
+    # 2. Obtiene el ID del usuario logueado
+    current_user = get_jwt_identity()
+    # 3. Lógica de negocio con validaciones de ownership
+```
+
+---
+
+### PUT `/api/v1/users/<user_id>` — Modificar usuario (solo el propio)
+Autenticación + tres verificaciones:
+```
+token → quién soy → ¿estoy modificando mi propio perfil? → si no, 403
+                  → ¿intentás cambiar email o password? → si sí, 400
+```
+
+#### **Importaciones**
+```python
+from flask_jwt_extended import jwt_required, get_jwt_identity
+```
+
+#### **Errores**
+```python
+@api.response(400, 'You cannot modify email or password')
+@api.response(403, 'Unauthorized action')
+@api.response(404, 'User not found')
+```
+
+#### **Cambios en PUT**
+
+1. Decorator
+```python
+# Decorator que bloquea el endpoint si no hay token válido (devuelve 401)
+@jwt_required()
+```
+2. Extraer el ID del usuario
+```python
+# Extrae el ID del usuario desde el token
+current_user = get_jwt_identity()
+
+# Verifica que el usuario está modificando su propio perfil
+if user_id != current_user:
+    return {'error': 'Unauthorized action'}, 403
+```
+3. Prevenir modificar el email o password
+```python
+# Previene modificar email o password en este endpoint
+if 'email' in user_data or 'password' in user_data:
+    return {'error': 'You cannot modify email or password'}, 400
+```
+
+#### **¿Por qué no se puede modificar email ni password aquí?**
+El email y password son datos sensibles que requieren
+verificaciones adicionales (como confirmar identidad).
+Este endpoint solo permite cambiar datos básicos como
+`first_name` y `last_name`.
+
+---
+
+### POST `/api/v1/users/` y GET — Públicos
+
+Sin cambios. El registro de usuarios y la consulta
+son públicos porque cualquiera puede crear una cuenta
+o ver la lista de usuarios.
+
+---
+
+## Tabla de accesos
+
+| Endpoint   | Sin token  | Token pero no es el usuario |
+|------------|------------|-----------------------------|
+| PUT /users | 401        | 403                         |
+| POST /users| ✅ público  | ✅ público                  |
+| GET /users | ✅ público  | ✅ público                  |
+
+
+---
 ---
 
 #   Task 4
 
 ---
+---
 
 #   Task 5
 
+---
 ---
 
 #   Task 6
 
 ---
+---
 
 #   Task 7
 
+---
 ---
 
 #   Task 8
 
 ---
+---
 
 #   Task 9
 
+---
 ---
 
 #   Task 10
