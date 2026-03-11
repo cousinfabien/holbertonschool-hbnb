@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 from flask_restx import Namespace, Resource, fields
-from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 # Import the shared facade instance to ensure a single in-memory data context.
 # Avoids creating multiple HBnBFacade instances with isolated state.
 from app.services import facade
@@ -19,14 +19,18 @@ user_model = api.model('User', {
 # ------------------- User List / Create -------------------
 @api.route('/')
 class UserList(Resource):
+    @jwt_required()
     @api.expect(user_model, validate=True)
     @api.response(201, 'User successfully created')
     @api.response(400, 'Invalid input data or email already registered')
+    @api.response(403, 'Admin privileges required')
     def post(self):
-        """Register a new user"""
+        """Create a new user (admin only)"""            
+        claims = get_jwt()
+        if not claims.get('is_admin'):
+            return {'error': 'Admin privileges required'}, 403
         user_data = api.payload
         try:
-            # Create a new user
             # The facade checks for duplicates and raises ValueError if found
             new_user = facade.create_user(user_data)
             return {
@@ -41,7 +45,7 @@ class UserList(Resource):
 
     @api.response(200, 'List of users retrieved successfully')
     def get(self):
-        """Retrieve all users"""
+        """Retrieve all users (public)"""
         users = facade.get_all_users()
         return [{
             'id': user.id,
@@ -75,17 +79,25 @@ class UserResource(Resource):
     @api.response(404, 'User not found')
     def put(self, user_id):
         """Update own user details (authenticated users only)"""
+        claims = get_jwt()
+        is_admin = claims.get('is_admin', False)
         current_user = get_jwt_identity()
 
-        # Check that the user is modifying their own data
-        if user_id != current_user:
+        # Non-admin can only modify their own data
+        if not is_admin and user_id != current_user:
             return {'error': 'Unauthorized action'}, 403
 
         user_data = api.payload
 
-        # Prevent modifying email or password
-        if 'email' in user_data or 'password' in user_data:
+        # Non-admin cannot modify email or password
+        if not is_admin and ('email' in user_data or 'password' in user_data):
             return {'error': 'You cannot modify email or password'}, 400
+
+        # Admin: check email uniqueness if email is being changed
+        if is_admin and 'email' in user_data:
+            existing = facade.get_user_by_email(user_data['email'])
+            if existing and existing.id != user_id:
+                return {'error': 'Email already in use'}, 400
 
         # We delegate the existence and email validation directly to the Facade
         # Update the user

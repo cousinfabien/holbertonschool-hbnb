@@ -1035,16 +1035,6 @@ puede ver las reviews sin estar autenticado.
 
 ---
 
-### Tabla de accesos
-
-| Endpoint        | Sin token | Token pero no es autor |
-|-----------------|-----------|------------------------|
-| POST /reviews   | 401       | 400 (si sos dueño del lugar) |
-| PUT /reviews    | 401       | 403                    |
-| DELETE /reviews | 401       | 403                    |
-| GET /reviews    | ✅ público | ✅ público             |
-
-
 
 ### **Reviews POST** — autenticación + dos validaciones extra:
 ```
@@ -1142,7 +1132,428 @@ o ver la lista de usuarios.
 ---
 ---
 
-#   Task 4
+# Task 4 — Administrator Access Endpoints (RBAC)
+##  Explicacion
+### Concepto
+Vamos a gregar un sistema de roles donde los **admins** tienen más permisos que los usuarios normales.
+RBAC (Role-Based Access Control) = control de acceso basado en roles.
+En este task, el rol es `is_admin` que viene dentro del token JWT.
+
+### ¿Cómo sabe el sistema si sos admin?
+
+En el Task 2, cuando se crea el token se incluye `is_admin`:
+```python
+access_token = create_access_token(
+    identity=str(user.id),
+    additional_claims={"is_admin": user.is_admin}
+)
+```
+
+Para leer ese claim en los endpoints usamos `get_jwt()` en vez de `get_jwt_identity()`:
+```python
+# get_jwt_identity() → solo devuelve el user_id (string)
+current_user_id = get_jwt_identity()
+
+# get_jwt() → devuelve TODOS los claims del token
+claims = get_jwt()
+is_admin = claims.get('is_admin', False)
+```
+
+---
+
+### Diferencia entre get_jwt_identity() y get_jwt()
+
+| Función | Devuelve | Uso |
+|---|---|---|
+| `get_jwt_identity()` | `"3dfcfef5-..."` (solo el ID) | Verificar ownership |
+| `get_jwt()` | `{"sub": "3dfcfef5", "is_admin": true, ...}` | Verificar rol |
+
+---
+
+### Patrón base que se repite en todos los endpoints admin
+```python
+@jwt_required()
+def post(self):
+    claims = get_jwt()
+    # Si no es admin → 403
+    if not claims.get('is_admin'):
+        return {'error': 'Admin privileges required'}, 403
+    # Si es admin → ejecutar lógica
+```
+
+---
+
+### ¿Qué cambia en cada archivo?
+#### `users.py` — POST y PUT
+- **POST `/api/v1/users/`**: Antes era público, ahora solo admins pueden crear usuarios
+- **PUT `/api/v1/users/<user_id>`**: 
+  - Usuario normal → solo puede modificar su propio perfil, sin email ni password
+  - Admin → puede modificar cualquier usuario, incluyendo email y password
+
+#### `amenities.py` — POST y PUT
+- **POST /api/v1/amenities/**: Solo admins pueden crear amenities
+- **PUT /api/v1/amenities/<amenity_id>**: Solo admins pueden modificar amenities
+
+#### `places.py` — PUT
+- Usuario normal → solo puede modificar sus propios lugares
+- Admin → puede modificar cualquier lugar sin importar el owner
+
+#### `reviews.py` — PUT y DELETE
+- Usuario normal → solo puede modificar/eliminar sus propias reviews
+- Admin → puede modificar/eliminar cualquier review sin importar el autor
+
+---
+
+### Lógica de ownership con bypass para admin
+```python
+@jwt_required()
+def put(self, place_id):
+    claims = get_jwt()
+    is_admin = claims.get('is_admin', False)
+    current_user = get_jwt_identity()
+
+    place = facade.get_place(place_id)
+    if place is None:
+        return {'error': 'Place not found'}, 404
+
+    # Admin bypasses ownership check
+    if not is_admin and place.owner_id != current_user:
+        return {'error': 'Unauthorized action'}, 403
+
+    # Continuar con la actualización
+```
+
+La clave es `if not is_admin and ...`:
+- Si es admin → salta la verificación de ownership
+- Si no es admin → verifica que sea el dueño
+
+---
+
+### Problema: ¿Cómo crear el primer admin?
+
+El task lo menciona como punto importante:
+> "Discuss different strategies with your team to overcome this problem."
+
+Las opciones son:
+1. Insertar un usuario admin directo en la base de datos (Task 9 — SQL scripts)
+2. Hardcodear un usuario admin al iniciar la app (solo para desarrollo)
+3. Crear un script separado que promueva a un usuario a admin
+
+Por ahora, para testear, vamos a agregar un usuario admin inicial
+en el `facade.__init__()` temporalmente.
+
+### Diferencia con Task 3
+
+- Task 3 → verificaba **quién sos** (ownership)
+- Task 4 → verifica **qué rol tenés** (is_admin)
+
+---
+
+### Tabla de accesos actualizada
+
+| Endpoint | Sin token | Usuario normal | Admin |
+|---|---|---|---|
+| POST /users | 401 | 403 | ✅ |
+| PUT /users | 401 | Solo el propio (sin email/pass) | Cualquier usuario |
+| POST /amenities | 401 | 403 | ✅ |
+| PUT /amenities | 401 | 403 | ✅ |
+| PUT /places | 401 | Solo el dueño | Cualquier lugar |
+| PUT /reviews | 401 | Solo el autor | Cualquier review |
+| DELETE /reviews | 401 | Solo el autor | Cualquier review |
+
+
+## `users.py`: Admin Access
+### POST `/api/v1/users/` — Crear usuario (solo admin)
+Antes era público. Ahora solo admins pueden crear usuarios.
+```
+token → ¿is_admin? → si no, 403 → si sí, crear usuario
+```
+
+#### **Importaciones nuevas**
+```python
+from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
+```
+`get_jwt()` es nuevo — devuelve todos los claims del token incluyendo `is_admin`.
+
+#### **Cambios en POST**
+```python
+@jwt_required()
+def post(self):
+    claims = get_jwt()
+    if not claims.get('is_admin'):
+        return {'error': 'Admin privileges required'}, 403
+```
+1.
+```python
+# get_jwt() devuelve todos los claims del token
+claims = get_jwt()
+```
+2.
+```python
+# Si is_admin no existe en el token o es False → 403
+if not claims.get('is_admin'):
+    return {'error': 'Admin privileges required'}, 403
+```
+
+---
+
+### PUT `/api/v1/users/<user_id>` — Modificar usuario
+Lógica combinada Task 3 + Task 4:
+```
+token → ¿is_admin?
+    → si NO  → ¿es mi propio perfil? → si no, 403
+              → ¿intenta cambiar email/pass? → si sí, 400
+    → si SÍ  → puede modificar cualquier usuario
+              → verifica uniqueness de email si lo cambia
+```
+
+#### **Cambios en PUT**
+```python
+claims = get_jwt()
+is_admin = claims.get('is_admin', False)
+current_user = get_jwt_identity()
+
+# Non-admin: solo puede modificar su propio perfil
+if not is_admin and user_id != current_user:
+    return {'error': 'Unauthorized action'}, 403
+
+# Non-admin: no puede cambiar email ni password
+if not is_admin and ('email' in user_data or 'password' in user_data):
+    return {'error': 'You cannot modify email or password'}, 400
+
+# Admin: si cambia el email, verificar que no esté en uso
+if is_admin and 'email' in user_data:
+    existing = facade.get_user_by_email(user_data['email'])
+    if existing and existing.id != user_id:
+        return {'error': 'Email already in use'}, 400
+```
+
+#### **¿Por qué el admin necesita verificar uniqueness de email?**
+El admin puede cambiar el email de cualquier usuario, pero no puede
+asignarle un email que ya usa otra persona.
+El usuario normal no necesita esta verificación porque no puede
+cambiar su email en este endpoint.
+
+---
+
+### GET — Públicos
+Sin cambios. Cualquier usuario puede ver la lista de usuarios
+o los detalles de un usuario específico.
+
+---
+
+### Tabla de accesos
+
+| Endpoint    | Sin token | Usuario normal            | Admin              |
+|-------------|-----------|---------------------------|--------------------|
+| POST /users | 401       | 403                       | ✅                 |
+| PUT /users  | 401       | Solo el propio sin email/pass | Cualquier usuario  |
+| GET /users  | ✅ público | ✅ público               | ✅ público         |
+
+---
+## `amenities.py`: Admin Access
+### POST `/api/v1/amenities/` — Crear amenity (solo admin)
+```
+token → ¿is_admin? → si no, 403 → si sí, crear amenity
+```
+
+### PUT `/api/v1/amenities/<amenity_id>` — Modificar amenity (solo admin)
+```
+token → ¿is_admin? → si no, 403 → si sí, modificar amenity
+```
+
+#### **Importaciones nuevas**
+```python
+from flask_jwt_extended import jwt_required, get_jwt
+```
+
+#### **Cambios en POST y PUT**
+```python
+@jwt_required()
+def post(self):
+    claims = get_jwt()
+    if not claims.get('is_admin'):
+        return {'error': 'Admin privileges required'}, 403
+```
+El patrón es idéntico en POST y PUT — solo admins pueden
+crear o modificar amenities.
+
+#### **¿Por qué amenities son solo para admins?**
+Las amenities son datos globales que aplican a todos los lugares
+(WiFi, Piscina, Estacionamiento, etc.).
+Si cualquier usuario pudiera crearlas, habría duplicados y datos
+inconsistentes. Solo el admin gestiona este catálogo.
+
+### GET — Públicos
+Sin cambios. Cualquier usuario puede ver las amenities disponibles.
+
+---
+
+### Tabla de accesos
+
+| Endpoint        | Sin token  | Usuario normal | Admin |
+|-----------------|------------|----------------|-------|
+| POST /amenities | 401        | 403            | ✅    |
+| PUT /amenities  | 401        | 403            | ✅    |
+| GET /amenities  | ✅ público | ✅ público     | ✅    |
+
+---
+
+## `places.py`: Admin Bypass
+
+### PUT `/api/v1/places/<place_id>` — Modificar lugar (dueño o admin)
+```
+token → ¿is_admin?
+    → si SÍ  → bypasea ownership → puede modificar cualquier lugar
+    → si NO  → ¿es el dueño? → si no, 403
+```
+
+#### **Importaciones nuevas**
+```python
+from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
+```
+
+#### **Cambio clave en PUT**
+```python
+claims = get_jwt()
+is_admin = claims.get('is_admin', False)
+current_user = get_jwt_identity()
+
+# Admin bypasses ownership check
+if not is_admin and place.owner_id != current_user:
+    return {'error': 'Unauthorized action'}, 403
+```
+
+#### **¿Por qué `if not is_admin and ...`?**
+- Si `is_admin = True` → la condición completa es `False` → no entra al if → bypasea
+- Si `is_admin = False` → evalúa el segundo lado → verifica ownership
+
+#### **POST y GET — Sin cambios**
+POST sigue siendo para usuarios autenticados (no requiere admin).
+GET sigue siendo público.
+
+---
+
+### Tabla de accesos
+
+| Endpoint    | Sin token  | Usuario normal | Admin          |
+|-------------|------------|----------------|----------------|
+| POST /places| 401        | ✅             | ✅             |
+| PUT /places | 401        | Solo el dueño  | Cualquier lugar|
+| GET /places | ✅ público | ✅ público     | ✅ público     |
+
+---
+
+## `reviews.py`: Admin Bypass
+### PUT `/api/v1/reviews/<review_id>` — Modificar review (autor o admin)
+### DELETE `/api/v1/reviews/<review_id>` — Eliminar review (autor o admin)
+```
+token → ¿is_admin?
+    → si SÍ  → bypasea ownership → puede modificar/eliminar cualquier review
+    → si NO  → ¿es el autor? → si no, 403
+```
+
+#### **Importaciones nuevas**
+```python
+from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
+```
+`get_jwt` es nuevo en Task 4 — devuelve todos los claims incluyendo `is_admin`.
+
+#### **Cambio clave en PUT y DELETE**
+```python
+claims = get_jwt()
+is_admin = claims.get('is_admin', False)
+current_user = get_jwt_identity()
+
+# Admin bypasses ownership check
+if not is_admin and r.user_id != current_user:
+    return {'error': 'Unauthorized action'}, 403
+```
+
+#### **¿Por qué `if not is_admin and ...`?**
+- Si `is_admin = True` → la condición completa es `False` → no entra al if → bypasea
+- Si `is_admin = False` → evalúa el segundo lado → verifica que sea el autor
+
+#### **POST y GET — Sin cambios**
+POST sigue con las mismas validaciones del Task 3.
+GET sigue siendo público.
+
+---
+
+### Tabla de accesos
+
+| Endpoint        | Sin token  | Usuario normal | Admin              |
+|-----------------|------------|----------------|--------------------|
+| POST /reviews   | 401        | ✅ (con validaciones) | ✅ (con validaciones) |
+| PUT /reviews    | 401        | Solo el autor  | Cualquier review   |
+| DELETE /reviews | 401        | Solo el autor  | Cualquier review   |
+| GET /reviews    | ✅ público | ✅ público     | ✅ público         |
+
+---
+## Problema: El Primer Admin
+### ¿Por qué necesitamos esto?
+
+En el Task 4 protegimos varios endpoints para que solo admins puedan acceder:
+- POST /users → solo admin
+- POST /amenities → solo admin
+- PUT /amenities → solo admin
+
+Pero para testear esto necesitamos un token con `is_admin: true`.
+El token se genera en el login, y el login lee `user.is_admin` del usuario.
+
+**El problema:**
+```
+Para crear un admin necesito ser admin
+Para ser admin necesito que alguien me cree como admin
+→ Círculo vicioso
+```
+
+---
+
+### ¿Cómo se resuelve en producción?
+
+Las opciones reales son:
+1. **Script SQL** — insertar un usuario admin directo en la base de datos (Task 9)
+2. **Script de consola** — un comando que promueve a un usuario a admin
+3. **Variable de entorno** — al arrancar la app, si no hay admins, crear uno automáticamente
+
+### ¿Cómo lo resolvemos ahora para testear?
+
+Agregamos un usuario admin hardcodeado en `facade.__init__()`.
+Solo para desarrollo — en producción esto se hace con SQL.
+```python
+def __init__(self):
+    self.user_repo = InMemoryRepository()
+    self.place_repo = InMemoryRepository()
+    self.review_repo = InMemoryRepository()
+    self.amenity_repo = InMemoryRepository()
+
+    # Admin user for testing — remove in production
+    from app.models.user import User
+    admin = User(
+        first_name="Admin",
+        last_name="User",
+        email="admin@hbnb.com",
+        password="admin1234",
+        is_admin=True
+    )
+    admin.hash_password("admin1234")
+    self.user_repo.add(admin)
+```
+
+### Flujo completo para testear
+```
+1. Arrancar la app → admin ya existe en memoria
+2. Login con admin@hbnb.com / admin1234
+3. Recibir token con is_admin: true
+4. Usar ese token para probar endpoints de admin
+```
+
+### ¿Por qué en facade.__init__() y no en otro lado?
+
+Porque `facade.__init__()` se ejecuta una sola vez cuando arranca la app,
+antes de que cualquier request llegue.
+Es el lugar más simple para insertar datos iniciales en memoria.
 
 ---
 ---

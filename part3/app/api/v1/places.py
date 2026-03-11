@@ -1,7 +1,6 @@
 from flask import request
 from flask_restx import Namespace, Resource, fields
-# 
-from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from app.services import facade
 
 api = Namespace('places', description='Place operations')
@@ -54,13 +53,10 @@ class PlaceList(Resource):
     @api.expect(place_model)
     @api.response(201, 'Place successfully created')
     @api.response(400, 'Invalid input data')
-    # 
     @api.response(401, 'Missing or invalid token')
     def post(self):
         """Create a new place (authenticated users only)"""
-        # 
         current_user = get_jwt_identity()
-        # 
         place_data = request.json
         # Force owner_id to be the authenticated user
         place_data['owner_id'] = current_user
@@ -123,15 +119,19 @@ class PlaceResource(Resource):
     @api.response(404, 'Place not found')
     @api.response(400, 'Invalid input data')
     def put(self, place_id):
-        """Update a place (owner only)"""
+        """Update a place (owner or admin)"""
+        claims = get_jwt()
+        is_admin = claims.get('is_admin', False)
         current_user = get_jwt_identity()
-        place = facade.get_place(place_id)
+
         # Check place
+        place = facade.get_place(place_id)
         if place is None:
             return {'error': 'Place not found'}, 404
-        # Check ownership
-        if place.owner_id != current_user:
+        # Admin bypasses ownership check
+        if not is_admin and place.owner_id != current_user:
             return {'error': 'Unauthorized action'}, 403
+
         try:
             updated_place = facade.update_place(place_id, request.json)
             if updated_place is None:

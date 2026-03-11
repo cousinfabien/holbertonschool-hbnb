@@ -6,7 +6,9 @@ from app.persistence.repository import InMemoryRepository
 from app.models.place import Place
 from app.models.review import Review
 from app.persistence.repository import InMemoryRepository
+from flask_bcrypt import Bcrypt
 
+_bcrypt = Bcrypt()
 class HBnBFacade:
     """
     Facade layer that connects the API (Presentation layer)
@@ -18,7 +20,19 @@ class HBnBFacade:
         self.place_repo = InMemoryRepository()
         self.review_repo = InMemoryRepository()
         self.amenity_repo = InMemoryRepository()
-
+        # -------------------------------------------------------
+        # Admin user for testing — remove in production
+        # -------------------------------------------------------
+        admin = User(
+            first_name="Admin",
+            last_name="User",
+            email="admin@hbnb.com",
+            password="admin1234",
+            is_admin=True
+        )
+        admin.password = _bcrypt.generate_password_hash("admin1234").decode('utf-8')
+        self.user_repo.add(admin)
+    
     # -------------------------
     # USERS CRUD
     # -------------------------
