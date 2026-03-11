@@ -3,6 +3,8 @@ from flask import Flask
 from flask_restx import Api
 from flask_bcrypt import Bcrypt
 from flask_jwt_extended import JWTManager
+# SQLAlchemy extension for database support
+from flask_sqlalchemy import SQLAlchemy
 from app.api.v1.users import api as users_ns
 from app.api.v1.amenities import api as amenities_ns
 from app.api.v1.places import api as places_ns
@@ -12,6 +14,8 @@ import config as app_config
 
 bcrypt = Bcrypt()
 jwt = JWTManager()
+# Create SQLAlchemy instance outside create_app() so models can import it
+db = SQLAlchemy()
 
 def create_app(config_class=app_config.DevelopmentConfig):
     """
@@ -23,7 +27,9 @@ def create_app(config_class=app_config.DevelopmentConfig):
     
     bcrypt.init_app(app)
     jwt.init_app(app)
-    
+    # Bind SQLAlchemy to the Flask app (reads SQLALCHEMY_DATABASE_URI from config)
+    db.init_app(app)
+
     authorizations = {
     'Bearer': {
         'type': 'apiKey',

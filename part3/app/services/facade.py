@@ -2,13 +2,12 @@
 
 from app.models.user import User
 from app.models.amenity import Amenity
-from app.persistence.repository import InMemoryRepository
 from app.models.place import Place
 from app.models.review import Review
-from app.persistence.repository import InMemoryRepository
-from flask_bcrypt import Bcrypt
+from app.persistence.repository import SQLAlchemyRepository
+# from flask_bcrypt import Bcrypt
 
-_bcrypt = Bcrypt()
+# _bcrypt = Bcrypt()
 class HBnBFacade:
     """
     Facade layer that connects the API (Presentation layer)
@@ -16,10 +15,12 @@ class HBnBFacade:
     """
 
     def __init__(self):
-        self.user_repo = InMemoryRepository()
-        self.place_repo = InMemoryRepository()
-        self.review_repo = InMemoryRepository()
-        self.amenity_repo = InMemoryRepository()
+        # NEW: each repo now receives the model class it manages
+        self.user_repo    = SQLAlchemyRepository(User)
+        self.place_repo   = SQLAlchemyRepository(Place)
+        self.review_repo  = SQLAlchemyRepository(Review)
+        self.amenity_repo = SQLAlchemyRepository(Amenity)
+        '''
         # -------------------------------------------------------
         # Admin user for testing — remove in production
         # -------------------------------------------------------
@@ -32,6 +33,7 @@ class HBnBFacade:
         )
         admin.password = _bcrypt.generate_password_hash("admin1234").decode('utf-8')
         self.user_repo.add(admin)
+        '''
     
     # -------------------------
     # USERS CRUD

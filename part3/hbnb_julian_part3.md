@@ -1490,6 +1490,7 @@ GET sigue siendo público.
 | GET /reviews    | ✅ público | ✅ público     | ✅ público         |
 
 ---
+
 ## Problema: El Primer Admin
 ### ¿Por qué necesitamos esto?
 
@@ -1521,44 +1522,531 @@ Las opciones reales son:
 
 Agregamos un usuario admin hardcodeado en `facade.__init__()`.
 Solo para desarrollo — en producción esto se hace con SQL.
-```python
-def __init__(self):
-    self.user_repo = InMemoryRepository()
-    self.place_repo = InMemoryRepository()
-    self.review_repo = InMemoryRepository()
-    self.amenity_repo = InMemoryRepository()
 
-    # Admin user for testing — remove in production
-    from app.models.user import User
-    admin = User(
-        first_name="Admin",
-        last_name="User",
-        email="admin@hbnb.com",
-        password="admin1234",
-        is_admin=True
-    )
-    admin.hash_password("admin1234")
-    self.user_repo.add(admin)
+```python
+from flask_bcrypt import Bcrypt
+
+_bcrypt = Bcrypt()
+
+class HBnBFacade:
+    def __init__(self):
+        self.user_repo = InMemoryRepository()
+        self.place_repo = InMemoryRepository()
+        self.review_repo = InMemoryRepository()
+        self.amenity_repo = InMemoryRepository()
+
+        # Admin user for testing — remove in production
+        admin = User(
+            first_name="Admin",
+            last_name="User",
+            email="admin@hbnb.com",
+            password="admin1234",
+            is_admin=True
+        )
+        admin.password = _bcrypt.generate_password_hash("admin1234").decode('utf-8')
+        self.user_repo.add(admin)
+```
+
+**¿Por qué no usamos `admin.hash_password("admin1234")`?**
+
+El método `hash_password()` del modelo `User` hace internamente `from app import bcrypt` para acceder a la instancia de bcrypt registrada en Flask. Pero en el momento en que `facade.py` se está importando, la app Flask todavía no terminó de inicializarse, lo que genera un **circular import**.
+
+Para evitarlo, se crea una instancia local `_bcrypt = Bcrypt()` directamente en `facade.py`, fuera de la clase. Esta instancia no está ligada a la app Flask pero es suficiente para hashear la contraseña del admin al momento de inicialización.
+
+**¿Por qué _bcrypt con guion bajo?**
+El guion bajo es una convención de Python para indicar que es una variable de uso interno del módulo, no pensada para ser importada desde afuera.
+
+```
+admin.hash_password()          →  from app import bcrypt  →  circular import ❌
+_bcrypt.generate_password_hash()  →  instancia local       →  funciona ✅
 ```
 
 ### Flujo completo para testear
-```
 1. Arrancar la app → admin ya existe en memoria
 2. Login con admin@hbnb.com / admin1234
 3. Recibir token con is_admin: true
 4. Usar ese token para probar endpoints de admin
+
+---
+---
+
+# Task 5 — Implement SQLAlchemy Repository
+## Objetivo
+
+Reemplazar el repositorio en memoria (`InMemoryRepository`) por uno basado en `SQLAlchemy` que persiste los datos en una base de datos SQLite. Los datos ya no se pierden al reiniciar la app.
+
+---
+
+## Contexto
+
+Hasta ahora los datos vivían en un diccionario de Python en memoria:
+
+```
+InMemoryRepository → self._storage = {}  →  se borra al reiniciar ❌
 ```
 
-### ¿Por qué en facade.__init__() y no en otro lado?
+A partir del Task 5 los datos se guardan en un archivo `SQLite`:
 
-Porque `facade.__init__()` se ejecuta una sola vez cuando arranca la app,
-antes de que cualquier request llegue.
-Es el lugar más simple para insertar datos iniciales en memoria.
+```
+SQLAlchemyRepository → development.db  →  persiste entre reinicios ✅
+```
+
+**Importante:** En este task solo se crea el repositorio y se configura SQLAlchemy.  
+Los modelos todavía NO se mapean a tablas. Eso se hace en el Task 6.
 
 ---
+
+## ¿Qué es SQLAlchemy?
+
+`SQLAlchemy` es un ORM (Object-Relational Mapper).  
+Permite trabajar con la base de datos usando Python en vez de SQL puro.
+
+```
+Sin ORM:   "INSERT INTO users VALUES ('Juan', 'juan@mail.com')"
+Con ORM:   user = User(name='Juan', email='juan@mail.com')
+           db.session.add(user)
+           db.session.commit()
+```
+
+`flask-sqlalchemy` es la extensión que integra SQLAlchemy con Flask.
+
 ---
 
-#   Task 5
+## Archivos modificados
+
+| Archivo | Qué cambia |
+|---|---|
+| `requirements.txt` | Agregar `sqlalchemy` y `flask-sqlalchemy` |
+| `config.py` | Agregar `SQLALCHEMY_DATABASE_URI` y `SQLALCHEMY_TRACK_MODIFICATIONS` |
+| `app/__init__.py` | Inicializar `SQLAlchemy` con `db = SQLAlchemy()` |
+| `app/persistence/repository.py` | Agregar clase `SQLAlchemyRepository` |
+| `app/services/facade.py` | Reemplazar `InMemoryRepository` por `SQLAlchemyRepository` |
+
+---
+
+## Paso 1 — `requirements.txt`
+
+Agregar las dos dependencias nuevas:
+
+```txt
+flask-bcrypt
+flask-jwt-extended
+sqlalchemy
+flask-sqlalchemy
+```
+
+---
+
+## Paso 2 — `config.py`
+
+**Antes:**
+```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+class Config:
+    SECRET_KEY = os.getenv('SECRET_KEY', 'default_secret_key')
+    DEBUG = False
+
+class DevelopmentConfig(Config):
+    DEBUG = True
+```
+
+**Después:**
+```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+class Config:
+    SECRET_KEY = os.getenv('SECRET_KEY', 'default_secret_key')
+    DEBUG = False
+
+class DevelopmentConfig(Config):
+    DEBUG = True
+    SQLALCHEMY_DATABASE_URI = 'sqlite:///development.db'
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
+
+config = {
+    'development': DevelopmentConfig,
+    'default': DevelopmentConfig
+}
+```
+
+### **¿Qué es `SQLALCHEMY_DATABASE_URI`?**
+Es la dirección de la base de datos.  
+El formato `sqlite:///development.db` le dice a SQLAlchemy que use un archivo SQLite llamado `development.db` en la carpeta del proyecto.  
+Este archivo no existe todavía. Se crea automáticamente la primera vez que ejecutés (Task 8):
+```python
+db.create_all()
+```
+```
+sqlite:///development.db
+│       │  └── nombre del archivo
+│       └── ruta relativa al proyecto
+└── tipo de base de datos
+```
+
+En producción esto cambia a MySQL:
+```python
+SQLALCHEMY_DATABASE_URI = 'mysql://usuario:password@localhost/hbnb'
+```
+
+### **¿Qué es `SQLALCHEMY_TRACK_MODIFICATIONS`?**
+Es una función de **Flask-SQLAlchemy** que rastrea cada cambio en los objetos para emitir "señales" (eventos).  
+Consume memoria extra y no la necesitamos, así que se desactiva con `False`. 
+Si lo dejás en `True` Flask te tira un warning en consola.
+
+---
+
+## Paso 3 — `app/__init__.py`
+
+Se agrega `SQLAlchemy` igual que se hizo con `bcrypt` y `JWTManager`.
+
+**Antes (Task 2):**
+```python
+from flask import Flask
+from flask_restx import Api
+from flask_bcrypt import Bcrypt
+from flask_jwt_extended import JWTManager
+from app.api.v1.users import api as users_ns
+from app.api.v1.amenities import api as amenities_ns
+from app.api.v1.places import api as places_ns
+from app.api.v1.reviews import api as reviews_ns
+from app.api.v1.auth import api as auth_ns
+import config as app_config
+
+bcrypt = Bcrypt()
+jwt = JWTManager()
+
+def create_app(config_class=app_config.DevelopmentConfig):
+    app = Flask(__name__)
+    app.config.from_object(config_class)
+
+    bcrypt.init_app(app)
+    jwt.init_app(app)
+
+    api = Api(app, version='1.0', title='HBnB API',
+              description='HBnB Application API', doc='/api/v1/')
+
+    api.add_namespace(auth_ns, path='/api/v1/auth')
+    api.add_namespace(users_ns, path='/api/v1/users')
+    api.add_namespace(amenities_ns, path='/api/v1/amenities')
+    api.add_namespace(places_ns, path='/api/v1/places')
+    api.add_namespace(reviews_ns, path='/api/v1/reviews')
+
+    return app
+```
+
+**Después (Task 5):**
+```python
+from flask import Flask
+from flask_restx import Api
+from flask_bcrypt import Bcrypt
+from flask_jwt_extended import JWTManager
+from flask_sqlalchemy import SQLAlchemy
+from app.api.v1.users import api as users_ns
+from app.api.v1.amenities import api as amenities_ns
+from app.api.v1.places import api as places_ns
+from app.api.v1.reviews import api as reviews_ns
+from app.api.v1.auth import api as auth_ns
+import config as app_config
+
+bcrypt = Bcrypt()
+jwt = JWTManager()
+db = SQLAlchemy()
+
+def create_app(config_class=app_config.DevelopmentConfig):
+    app = Flask(__name__)
+    app.config.from_object(config_class)
+
+    bcrypt.init_app(app)
+    jwt.init_app(app)
+    db.init_app(app)
+
+    api = Api(app, version='1.0', title='HBnB API',
+              description='HBnB Application API', doc='/api/v1/')
+
+    api.add_namespace(auth_ns, path='/api/v1/auth')
+    api.add_namespace(users_ns, path='/api/v1/users')
+    api.add_namespace(amenities_ns, path='/api/v1/amenities')
+    api.add_namespace(places_ns, path='/api/v1/places')
+    api.add_namespace(reviews_ns, path='/api/v1/reviews')
+
+    return app
+```
+
+**¿Por qué `db = SQLAlchemy()` está fuera de `create_app()`?**
+Por la misma razón que `bcrypt` y `jwt` — otros archivos (los modelos) necesitan importar `db` para definir sus tablas. Si estuviera dentro de `create_app()` no sería accesible desde afuera.
+
+-   `db = SQLAlchemy()` crea la instancia vacía, sin saber nada de Flask todavía. Es como comprar una heladera sin enchufarla.
+-   `db.init_app(app)` la conecta a la app Flask. A partir de ese momento db sabe:
+    +   Dónde está la base de datos (lee `SQLALCHEMY_DATABASE_URI` del config)
+    +   Cuál es el contexto de la app para manejar las conexiones
+
+```python
+bcrypt = Bcrypt()      →   instancia vacía
+bcrypt.init_app(app)   →   conectada a Flask
+
+jwt = JWTManager()     →   instancia vacía
+jwt.init_app(app)      →   conectada a Flask
+
+db = SQLAlchemy()      →   instancia vacía
+db.init_app(app)       →   conectada a Flask
+```
+
+---
+
+## Paso 4 — `app/persistence/repository.py`
+
+Se agrega la clase `SQLAlchemyRepository` al mismo archivo donde ya existe `InMemoryRepository`.
+
+```python
+from app import db
+from abc import ABC, abstractmethod
+
+
+class Repository(ABC):
+    @abstractmethod
+    def add(self, obj):
+        pass
+
+    @abstractmethod
+    def get(self, obj_id):
+        pass
+
+    @abstractmethod
+    def get_all(self):
+        pass
+
+    @abstractmethod
+    def update(self, obj_id, data):
+        pass
+
+    @abstractmethod
+    def delete(self, obj_id):
+        pass
+
+    @abstractmethod
+    def get_by_attribute(self, attr_name, attr_value):
+        pass
+
+
+class InMemoryRepository(Repository):
+    def __init__(self):
+        self._storage = {}
+
+    def add(self, obj):
+        self._storage[obj.id] = obj
+
+    def get(self, obj_id):
+        return self._storage.get(obj_id)
+
+    def get_all(self):
+        return list(self._storage.values())
+
+    def update(self, obj_id, data):
+        obj = self.get(obj_id)
+        if obj:
+            for key, value in data.items():
+                setattr(obj, key, value)
+
+    def delete(self, obj_id):
+        if obj_id in self._storage:
+            del self._storage[obj_id]
+
+    def get_by_attribute(self, attr_name, attr_value):
+        return next(
+            (obj for obj in self._storage.values()
+             if getattr(obj, attr_name, None) == attr_value),
+            None
+        )
+
+
+class SQLAlchemyRepository(Repository):
+    def __init__(self, model):
+        self.model = model
+
+    def add(self, obj):
+        db.session.add(obj)
+        db.session.commit()
+
+    def get(self, obj_id):
+        return self.model.query.get(obj_id)
+
+    def get_all(self):
+        return self.model.query.all()
+
+    def update(self, obj_id, data):
+        obj = self.get(obj_id)
+        if obj:
+            for key, value in data.items():
+                setattr(obj, key, value)
+            db.session.commit()
+
+    def delete(self, obj_id):
+        obj = self.get(obj_id)
+        if obj:
+            db.session.delete(obj)
+            db.session.commit()
+
+    def get_by_attribute(self, attr_name, attr_value):
+        return self.model.query.filter_by(**{attr_name: attr_value}).first()
+```
+
+### Comparación: InMemoryRepository vs SQLAlchemyRepository
+
+| Método | InMemoryRepository | SQLAlchemyRepository |
+|---|---|---|
+| `add` | `self._storage[obj.id] = obj` | `db.session.add(obj)` + `commit()` |
+| `get` | `self._storage.get(obj_id)` | `Model.query.get(obj_id)` |
+| `get_all` | `list(self._storage.values())` | `Model.query.all()` |
+| `update` | `setattr(obj, key, value)` | `setattr` + `commit()` |
+| `delete` | `del self._storage[obj_id]` | `db.session.delete(obj)` + `commit()` |
+| `get_by_attribute` | itera con `getattr` | `Model.query.filter_by()` |
+
+**¿Qué es `db.session`?**
+Es la transacción activa de SQLAlchemy.  
+Funciona como una "bolsa de cambios" que acumula operaciones y las aplica todas juntas cuando hacés `commit()`.
+
+```
+db.session.add(obj)    →  agrega el objeto a la bolsa (no escribe aún)
+db.session.delete(obj) →  marca el objeto para borrar (no escribe aún)
+db.session.commit()    →  escribe todos los cambios en la base de datos (escribe en el .db)
+```
+
+**¿Por qué update no tiene `db.session.add()`?**
+Porque el objeto ya está en la sesión — SQLAlchemy lo está rastreando desde que lo trajiste con query.get(). Entonces solo necesitás commit() para guardar los cambios:
+```python
+obj = self.get(obj_id)        # SQLAlchemy empieza a rastrear obj
+setattr(obj, 'name', 'WiFi')  # modificás el objeto
+db.session.commit()           # SQLAlchemy detecta el cambio y lo guarda
+```
+
+**¿Qué es `Model.query`?**
+Es la interfaz de consultas de SQLAlchemy.  
+Permite buscar registros sin escribir SQL:
+
+```python
+User.query.get("abc-123")                    # SELECT * WHERE id = 'abc-123'
+User.query.all()                             # SELECT * FROM users
+User.query.filter_by(email="a@b.com").first()# SELECT * WHERE email = 'a@b.com' LIMIT 1
+```
+
+**¿Por qué `SQLAlchemyRepository` recibe `model` como parámetro?**
+Para que sea reutilizable con cualquier entidad. En vez de tener un repositorio por cada modelo, se crea uno solo que acepta el modelo como argumento:
+
+```python
+self.user_repo     = SQLAlchemyRepository(User)
+self.place_repo    = SQLAlchemyRepository(Place)
+self.review_repo   = SQLAlchemyRepository(Review)
+self.amenity_repo  = SQLAlchemyRepository(Amenity)
+```
+
+---
+
+## Paso 5 — `app/services/facade.py`
+
+Se reemplaza `InMemoryRepository` por `SQLAlchemyRepository` en el `__init__` de la Facade.
+
+**Antes:**
+```python
+from app.persistence.repository import InMemoryRepository
+
+class HBnBFacade:
+    def __init__(self):
+        self.user_repo    = InMemoryRepository()
+        self.place_repo   = InMemoryRepository()
+        self.review_repo  = InMemoryRepository()
+        self.amenity_repo = InMemoryRepository()
+```
+
+**Después:**
+```python
+from app.models.user import User
+from app.models.place import Place
+from app.models.review import Review
+from app.models.amenity import Amenity
+from app.persistence.repository import SQLAlchemyRepository
+
+class HBnBFacade:
+    def __init__(self):
+        self.user_repo    = SQLAlchemyRepository(User)
+        self.place_repo   = SQLAlchemyRepository(Place)
+        self.review_repo  = SQLAlchemyRepository(Review)
+        self.amenity_repo = SQLAlchemyRepository(Amenity)
+```
+
+**¿Por qué se eliminó el admin hardcodeado?**
+El admin hardcodeado funcionaba con `InMemoryRepository` porque se podía insertar un objeto Python directo en el diccionario. Con `SQLAlchemyRepository` los datos se guardan en la base de datos, y la base de datos todavía no está inicializada en este task. El admin se creará en el Task 9 con un script SQL.
+**¿Para qué servía _bcrypt = Bcrypt()?**
+Era la solución al circular import. `hash_password()` del modelo User hace internamente `from app import bcrypt`, pero cuando facade.py se importa al arrancar la app, ese `bcrypt` todavía no está listo → circular import.
+La solución fue crear una instancia local `_bcrypt = Bcrypt()` directamente en `facade.py` para hashear la contraseña del admin sin pasar por `app`:
+```python
+# En vez de esto (circular import):
+admin.hash_password("admin1234")
+# Se hacía esto (instancia local):
+admin.password = _bcrypt.generate_password_hash("admin1234").decode('utf-8')
+```
+
+
+---
+
+## ¿Por qué no se puede testear todavía?
+
+En este task solo se creó la infraestructura. Para que `SQLAlchemyRepository` funcione, los modelos (`User`, `Place`, etc.) necesitan estar mapeados a tablas de la base de datos con columnas definidas. Eso se hace en el Task 6.
+
+```
+Task 5: Crear SQLAlchemyRepository  ✅
+Task 6: Mapear modelos a tablas     ← necesario para que funcione
+Task 7: Relaciones entre tablas
+Task 8: Inicializar la base de datos
+```
+
+---
+
+## Flujo completo después del Task 5
+
+```
+Request HTTP
+    │
+    ▼
+API (Namespace)
+    │
+    ▼
+Facade
+    │
+    ▼
+SQLAlchemyRepository
+    │
+    ▼
+db.session.add() / query.get() / etc.
+    │
+    ▼
+development.db (SQLite)
+```
+## El Task 5 está completo:El Task 5 está completo:
+
+
+
+
+
+---
+
+## 🏆 Resultado Final del Task 5
+✅ `requirements.txt` — agregadas las dependencias
+✅ `config.py` — `SQLALCHEMY_DATABASE_URI` y `SQLALCHEMY_TRACK_MODIFICATIONS`
+- `SQLAlchemyRepository` implementado siguiendo la misma interfaz que `InMemoryRepository`
+✅ `app/__init__.py` — `db = SQLAlchemy()` + `db.init_app(app)`
+- `db = SQLAlchemy()` registrado en `app/__init__.py`
+- `config.py` actualizado con `SQLALCHEMY_DATABASE_URI` apuntando a `development.db`
+✅ `repository.py` — `SQLAlchemyRepository` agregado
+✅ `facade.py` — repos cambiados a `SQLAlchemyRepository`
+- Facade refactorizada para usar `SQLAlchemyRepository` en todos los repos
+- La app todavía no funciona completamente hasta que los modelos sean mapeados (Task 6)
 
 ---
 ---
