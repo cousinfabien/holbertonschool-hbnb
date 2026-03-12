@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 from flask_restx import Namespace, Resource, fields
+from flask_jwt_extended import jwt_required, get_jwt_identity
 # Import the shared facade instance to ensure a single in-memory data context.
 # Avoids creating multiple HBnBFacade instances with isolated state.
 from app.services import facade
@@ -73,10 +74,18 @@ class UserResource(Resource):
     @api.response(200, 'User updated successfully')
     @api.response(400, 'Invalid input data or email already registered')
     @api.response(404, 'User not found')
+    @jwt_required()
     def put(self, user_id):
         """Update an existing user"""
+        current_user = get_jwt_identity()
+        if user_id != current_user:
+            return {'error': 'Unauthorized action'}, 403
         user_data = api.payload
-        # We delegate the existence and email validation directly to the Facade
+
+        # email or password modification prevention
+        if 'email' in user_data or 'password' in user_data:
+            return {'error': 'You cannot modify email or password'}, 400
+
         # Update the user
         try:
             updated_user = facade.update_user(user_id, user_data)
