@@ -1,6 +1,6 @@
 #!/usr/bin/python3
-from app import db # Import db instance from app
 from abc import ABC, abstractmethod
+from app.extensions import db
 
 
 class Repository(ABC):
@@ -67,7 +67,7 @@ class SQLAlchemyRepository(Repository):
         db.session.commit()
 
     def get(self, obj_id):
-        return self.model.query.get(obj_id) # SELECT * WHERE id = 'obj_id'
+        return db.session.get(self.model, obj_id) # SELECT * WHERE id = 'obj_id'
 
     def get_all(self):
         return self.model.query.all() # SELECT * FROM users

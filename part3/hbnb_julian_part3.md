@@ -1701,36 +1701,207 @@ Consume memoria extra y no la necesitamos, así que se desactiva con `False`.
 Si lo dejás en `True` Flask te tira un warning en consola.
 
 ---
+### `config.py` — Explicación paso a paso
+
+---
+
+### Imports
+
+```python
+import os
+from dotenv import load_dotenv
+load_dotenv()
+```
+
+`os` permite leer variables del sistema operativo. `load_dotenv()` carga el archivo `.env` y convierte cada línea en una variable de entorno disponible para `os.getenv()`.
+
+```
+.env                    load_dotenv()              os.getenv()
+─────────────────       ──────────────────         ─────────────────
+SECRET_KEY=abc123  →    carga el archivo    →      lee SECRET_KEY
+FLASK_DEBUG=True        al sistema operativo       y devuelve 'abc123'
+```
+
+---
+
+### `class Config` — la base
+
+```python
+class Config:
+    SECRET_KEY = os.getenv('SECRET_KEY', 'default_secret_key')
+    DEBUG = False
+    TESTING = False
+    SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
+    JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', 'dev_secret_key_not_for_production')
+```
+
+Es la clase madre de la que heredan todas las demás. Define los valores por defecto:
+
+| Variable | Valor | Para qué sirve |
+|---|---|---|
+| `SECRET_KEY` | desde `.env` | Firma cookies y sesiones Flask |
+| `DEBUG` | `False` | Errores ocultos por defecto |
+| `TESTING` | `False` | Modo test desactivado por defecto |
+| `SQLALCHEMY_DATABASE_URI` | `sqlite:///:memory:` | Base de datos en RAM como fallback |
+| `SQLALCHEMY_TRACK_MODIFICATIONS` | `False` | Desactiva rastreo de cambios para ahorrar memoria |
+| `JWT_SECRET_KEY` | desde `.env` | Clave separada para firmar los tokens JWT |
+
+---
+
+### `class DevelopmentConfig` — tu máquina
+
+```python
+class DevelopmentConfig(Config):
+    DEBUG = True
+    SQLALCHEMY_DATABASE_URI = 'sqlite:///instance/development.db'
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
+```
+
+Hereda todo de `Config` y sobreescribe:
+- `DEBUG = True` — muestra errores detallados en el navegador mientras desarrollás
+- `SQLALCHEMY_DATABASE_URI` — usa un archivo SQLite local `development.db` dentro de la carpeta `instance/`
+
+```
+sqlite:///instance/development.db
+  │        └── archivo local en tu máquina
+  └── tipo de base de datos
+```
+
+---
+
+### `class TestingConfig` — pytest
+
+```python
+class TestingConfig(Config):
+    TESTING = True
+    SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
+```
+
+- `TESTING = True` — activa el modo test de Flask, los errores se propagan correctamente a pytest
+- `sqlite:///:memory:` — base de datos en RAM, se crea al iniciar el test y se borra sola al terminar, nunca toca el archivo real
+
+```
+TestingConfig
+    │
+    ├── test empieza  →  base de datos creada en RAM
+    ├── test corre    →  datos temporales
+    └── test termina  →  base de datos borrada ✅
+```
+
+---
+
+### `class ProductionConfig` — servidor real
+
+```python
+class ProductionConfig(Config):
+    DEBUG = False
+    SQLALCHEMY_DATABASE_URI = os.getenv('DATABASE_URL')
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
+    JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY')
+```
+
+- `DEBUG = False` — nunca mostrar errores internos a usuarios reales
+- `DATABASE_URL` — lee la URL de MySQL desde una variable de entorno del servidor, nunca hardcodeada en el código
+- `JWT_SECRET_KEY` — también desde variable de entorno del servidor, no desde el `.env` del proyecto
+
+```
+Desarrollo:   SQLALCHEMY_DATABASE_URI = 'sqlite:///development.db'  (archivo local)
+Producción:   SQLALCHEMY_DATABASE_URI = os.getenv('DATABASE_URL')   (MySQL en servidor)
+```
+
+---
+
+### `config = {...}` — el diccionario de acceso
+
+```python
+config = {
+    'development': DevelopmentConfig,
+    'testing': TestingConfig,
+    'production': ProductionConfig,
+    'default': DevelopmentConfig
+}
+```
+
+Permite acceder a cualquier configuración por nombre de string. Por ejemplo:
+
+```python
+app = create_app(config['production'])   # servidor real
+app = create_app(config['testing'])      # pytest
+app = create_app()                       # development por defecto
+```
+
+Si nadie especifica nada, usa `DevelopmentConfig` por defecto.
+
+---
+
+### Resumen visual
+
+```
+Config (base)
+    │
+    ├── DevelopmentConfig  →  tu máquina, DEBUG=True, SQLite local
+    ├── TestingConfig      →  pytest, base de datos en RAM
+    └── ProductionConfig   →  servidor real, DEBUG=False, MySQL
+```
+
+---
 
 ## Paso 3 — `app/__init__.py`
 
 Se agrega `SQLAlchemy` igual que se hizo con `bcrypt` y `JWTManager`.
+Creamos  `extensions.py`
 
-**Antes (Task 2):**
 ```python
+#!/usr/bin/python3
+import os
 from flask import Flask
 from flask_restx import Api
-from flask_bcrypt import Bcrypt
-from flask_jwt_extended import JWTManager
+from app.extensions import db, bcrypt, jwt
+
 from app.api.v1.users import api as users_ns
 from app.api.v1.amenities import api as amenities_ns
 from app.api.v1.places import api as places_ns
 from app.api.v1.reviews import api as reviews_ns
 from app.api.v1.auth import api as auth_ns
+
 import config as app_config
 
-bcrypt = Bcrypt()
-jwt = JWTManager()
 
 def create_app(config_class=app_config.DevelopmentConfig):
     app = Flask(__name__)
     app.config.from_object(config_class)
 
+    # NEW: Create instance/ folder if it doesn't exist
+    os.makedirs(app.instance_path, exist_ok=True)
+    # NEW: Build absolute path for SQLite database file
+    db_path = os.path.join(app.instance_path, 'development.db')
+    # NEW: Override URI with absolute path for reliability
+    app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
+
     bcrypt.init_app(app)
     jwt.init_app(app)
+    db.init_app(app)    # NEW: Bind SQLAlchemy to the Flask app
 
-    api = Api(app, version='1.0', title='HBnB API',
-              description='HBnB Application API', doc='/api/v1/')
+    authorizations = {
+        'Bearer': {
+            'type': 'apiKey',
+            'in': 'header',
+            'name': 'Authorization',
+            'description': 'JWT token. Format: Bearer <token>'
+        }
+    }
+
+    api = Api(
+        app,
+        version='1.0',
+        title='HBnB API',
+        description='HBnB Application API',
+        doc='/api/v1/',
+        authorizations=authorizations,
+        security='Bearer'
+    )
 
     api.add_namespace(auth_ns, path='/api/v1/auth')
     api.add_namespace(users_ns, path='/api/v1/users')
@@ -1738,56 +1909,22 @@ def create_app(config_class=app_config.DevelopmentConfig):
     api.add_namespace(places_ns, path='/api/v1/places')
     api.add_namespace(reviews_ns, path='/api/v1/reviews')
 
-    return app
-```
-
-**Después (Task 5):**
-```python
-from flask import Flask
-from flask_restx import Api
-from flask_bcrypt import Bcrypt
-from flask_jwt_extended import JWTManager
-from flask_sqlalchemy import SQLAlchemy
-from app.api.v1.users import api as users_ns
-from app.api.v1.amenities import api as amenities_ns
-from app.api.v1.places import api as places_ns
-from app.api.v1.reviews import api as reviews_ns
-from app.api.v1.auth import api as auth_ns
-import config as app_config
-
-bcrypt = Bcrypt()
-jwt = JWTManager()
-db = SQLAlchemy()
-
-def create_app(config_class=app_config.DevelopmentConfig):
-    app = Flask(__name__)
-    app.config.from_object(config_class)
-
-    bcrypt.init_app(app)
-    jwt.init_app(app)
-    db.init_app(app)
-
-    api = Api(app, version='1.0', title='HBnB API',
-              description='HBnB Application API', doc='/api/v1/')
-
-    api.add_namespace(auth_ns, path='/api/v1/auth')
-    api.add_namespace(users_ns, path='/api/v1/users')
-    api.add_namespace(amenities_ns, path='/api/v1/amenities')
-    api.add_namespace(places_ns, path='/api/v1/places')
-    api.add_namespace(reviews_ns, path='/api/v1/reviews')
+    # Create the tables if they don't exist — uncomment in Task 6
+    # with app.app_context():
+    #     db.create_all()
 
     return app
 ```
 
-**¿Por qué `db = SQLAlchemy()` está fuera de `create_app()`?**
-Por la misma razón que `bcrypt` y `jwt` — otros archivos (los modelos) necesitan importar `db` para definir sus tablas. Si estuviera dentro de `create_app()` no sería accesible desde afuera.
+---
 
--   `db = SQLAlchemy()` crea la instancia vacía, sin saber nada de Flask todavía. Es como comprar una heladera sin enchufarla.
--   `db.init_app(app)` la conecta a la app Flask. A partir de ese momento db sabe:
-    +   Dónde está la base de datos (lee `SQLALCHEMY_DATABASE_URI` del config)
-    +   Cuál es el contexto de la app para manejar las conexiones
+### Cambios nuevos explicados
+#### `db = SQLAlchemy()` — fuera de `create_app()`
 
-```python
+Por la misma razón que `bcrypt` y `jwt` — los modelos necesitan importar `db` para definir sus tablas.  
+Si estuviera dentro de `create_app()` no sería accesible desde afuera.
+
+```
 bcrypt = Bcrypt()      →   instancia vacía
 bcrypt.init_app(app)   →   conectada a Flask
 
@@ -1797,6 +1934,110 @@ jwt.init_app(app)      →   conectada a Flask
 db = SQLAlchemy()      →   instancia vacía
 db.init_app(app)       →   conectada a Flask
 ```
+
+`db = SQLAlchemy()` crea la instancia vacía, sin saber nada de Flask todavía.
+`db.init_app(app)` la conecta a la app Flask. A partir de ese momento `db` sabe:
+- Dónde está la base de datos (lee `SQLALCHEMY_DATABASE_URI` del config)
+- Cuál es el contexto de la app para manejar las conexiones
+
+---
+
+#### `os.makedirs(app.instance_path, exist_ok=True)`
+
+Crea la carpeta `instance/` automáticamente si no existe.
+
+```
+part3/
+  ├── app/
+  ├── run.py
+  ├── config.py
+  └── instance/            ← esta carpeta se crea aquí
+        └── development.db
+```
+
+- `app.instance_path` — Flask sabe automáticamente la ruta completa donde debería estar `instance/`
+- `exist_ok=True` — si la carpeta ya existe no tira error, simplemente no hace nada
+
+Sin esta línea, si `instance/` no existe cuando SQLite intenta crear `development.db` adentro, la app tira un error porque no puede escribir en una carpeta que no existe.
+
+---
+
+#### `db_path = os.path.join(app.instance_path, 'development.db')`
+
+Construye la ruta absoluta completa al archivo SQLite:
+
+```
+app.instance_path  →  /home/juliangf94/.../part3/instance
+'development.db'   →  nombre del archivo
+resultado          →  /home/juliangf94/.../part3/instance/development.db
+```
+
+`os.path.join` une las dos partes con el separador correcto según el sistema operativo (`/` en Linux, `\` en Windows).
+
+---
+
+#### `app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'`
+
+Sobreescribe la URI que venía del `config.py` con la ruta absoluta que acabamos de construir.
+
+```
+config.py:      'sqlite:///instance/development.db'   ← ruta relativa
+__init__.py:    'sqlite:////home/.../instance/development.db'  ← ruta absoluta ✅
+```
+
+La ruta absoluta es más confiable porque funciona sin importar desde qué directorio se ejecute la app.
+
+---
+
+#### `# with app.app_context(): db.create_all()` — comentado por ahora
+
+`db.create_all()` crea las tablas en la base de datos leyendo los modelos mapeados.
+Está comentado porque los modelos todavía no tienen columnas definidas para SQLAlchemy — eso se hace en el Task 6.
+
+### `authorizations` y `security='Bearer'` — botón 🔓 en Swagger
+```python
+authorizations = {
+    'Bearer': {
+        'type': 'apiKey',
+        'in': 'header',
+        'name': 'Authorization',
+        'description': 'JWT token. Format: Bearer <token>'
+    }
+}
+
+api = Api(
+    app,
+    ...
+    authorizations=authorizations,
+    security='Bearer'
+)
+```
+
+Sin esta configuración, Swagger no sabe que la API usa autenticación JWT y no puede enviar el header `Authorization` por vos.
+
+Con esta configuración aparece el botón 🔓 **Authorize** en Swagger donde pegás tu token una sola vez y Swagger lo incluye automáticamente en todos los requests que hagas desde la UI.
+
+El diccionario `authorizations` define el esquema de seguridad:
+
+| Campo | Valor | Para qué sirve |
+|---|---|---|
+| `type` | `'apiKey'` | La autenticación es mediante un token/clave |
+| `in` | `'header'` | El token va en el header HTTP, no en la URL |
+| `name` | `'Authorization'` | El nombre exacto del header |
+| `description` | texto | Texto informativo que aparece en Swagger |
+```
+Sin authorizations:   Swagger no sabe que existe autenticación ❌
+Con authorizations:   Swagger muestra el botón 🔓 Authorize    ✅
+```
+
+
+
+```
+Task 5: crear SQLAlchemyRepository  ✅
+Task 6: mapear modelos a tablas     ← necesario antes de descomentar esto
+```
+
+
 
 ---
 
@@ -1875,7 +2116,7 @@ class SQLAlchemyRepository(Repository):
         db.session.commit()
 
     def get(self, obj_id):
-        return self.model.query.get(obj_id)
+        return db.session.get(self.model, obj_id)
 
     def get_all(self):
         return self.model.query.all()

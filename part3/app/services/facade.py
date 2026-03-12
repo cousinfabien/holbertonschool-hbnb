@@ -65,10 +65,7 @@ class HBnBFacade:
         """
         Retrieve a user by email.
         """
-        for user in self.user_repo.get_all():
-            if user.email == email:
-                return user
-        return None
+        return self.user_repo.get_by_attribute("email", email)
 
     # READ (all users)
     def get_all_users(self):
@@ -100,6 +97,10 @@ class HBnBFacade:
         # update_profile validates all fields before applying changes.
         user.update_profile(user_data)
         return user
+
+    # DELETE user
+    def delete_user(self, user_id):
+        return self.user_repo.delete(user_id)
     
     # -------------------------
     # AMENITY CRUD
@@ -139,6 +140,10 @@ class HBnBFacade:
         # Delegate validation and update to the model.
         amenity.update_amenity(amenity_data)
         return amenity
+
+    # DELETE amenity
+    def delete_amenity(self, amenity_id):
+        return self.amenity_repo.delete(amenity_id)
     
     # ==========================================
     # PLACES CRUD
@@ -264,6 +269,10 @@ class HBnBFacade:
         # Delegate validation and update to the model
         place.update_details(place_data)
         return place
+
+    # DELETE place
+    def delete_place(self, place_id):
+        return self.place_repo.delete(place_id)
 
     # -------------------------
     # REVIEW CRUD
