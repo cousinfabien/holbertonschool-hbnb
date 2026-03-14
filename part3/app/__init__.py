@@ -61,9 +61,8 @@ def create_app(config_class=app_config.DevelopmentConfig):
     api.add_namespace(reviews_ns, path='/api/v1/reviews')
     
     # Create the tables if they don't exist
-    #with app.app_context():
-    #    db.create_all()
-        # Permissions for DB file (read/write for everyone)
+    with app.app_context():
+        db.create_all()
 
     return app
     

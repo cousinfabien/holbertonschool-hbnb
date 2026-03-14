@@ -2117,6 +2117,7 @@ class SQLAlchemyRepository(Repository):
 
     def get(self, obj_id):
         return db.session.get(self.model, obj_id)
+        # return self.model.query.get(obj_id) no aceptado en versiones nuevas
 
     def get_all(self):
         return self.model.query.all()
@@ -2193,19 +2194,6 @@ self.amenity_repo  = SQLAlchemyRepository(Amenity)
 
 Se reemplaza `InMemoryRepository` por `SQLAlchemyRepository` en el `__init__` de la Facade.
 
-**Antes:**
-```python
-from app.persistence.repository import InMemoryRepository
-
-class HBnBFacade:
-    def __init__(self):
-        self.user_repo    = InMemoryRepository()
-        self.place_repo   = InMemoryRepository()
-        self.review_repo  = InMemoryRepository()
-        self.amenity_repo = InMemoryRepository()
-```
-
-**Después:**
 ```python
 from app.models.user import User
 from app.models.place import Place
@@ -2292,7 +2280,655 @@ development.db (SQLite)
 ---
 ---
 
-#   Task 6
+# Task 6 — Map the User Entity to SQLAlchemy Model
+## Objetivo
+
+Mapear los modelos `BaseModel` y `User` a tablas reales de SQLAlchemy, crear un `UserRepository` específico y actualizar la Facade.
+
+| Paso | Archivo | Qué cambia |
+|---|---|---|
+| 1 | `base_model.py` | Hereda de `db.Model` con columnas SQLAlchemy |
+| 2 | `user.py` | Columnas SQLAlchemy + `__tablename__` |
+| 3 | `user_repository.py` | Nuevo archivo con `UserRepository` |
+| 4 | `facade.py` | Usa `UserRepository` en vez de `SQLAlchemyRepository(User)` |
+
+---
+
+## Paso 1 — `app/models/base_model.py`
+### ¿Qué es el mapeo ORM?
+
+Hasta ahora `BaseModel` era una clase Python normal que guardaba datos en memoria.
+Con SQLAlchemy, cada atributo de la clase se convierte en una **columna de la base de datos**.
+
+```
+Antes:  self.id = str(uuid.uuid4())     →  atributo Python en memoria
+Después: id = db.Column(db.String(36))  →  columna en la tabla SQL
+```
+
+```python
+#!/usr/bin/python3
+import uuid
+from datetime import datetime, timezone
+from app.extensions import db
+
+class BaseModel(db.Model):
+    __abstract__ = True  # SQLAlchemy does not create a table for BaseModel
+
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    def save(self):
+        """Update the updated_at timestamp whenever the object is modified"""
+        self.updated_at = datetime.now(timezone.utc)
+
+    def update(self, data):
+        """Update the attributes of the object based on the provided dictionary"""
+        for key, value in data.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
+        self.save()
+
+    def delete(self):
+        """Placeholder for delete operation"""
+        pass
+
+    def __repr__(self):
+        return f"<{self.__class__.__name__} {self.id}>"
+```
+
+### Cambios explicados
+#### **`class BaseModel(db.Model)`**
+
+Antes heredaba de `object` (clase Python normal).  
+Ahora hereda de `db.Model` — esto le dice a SQLAlchemy que esta clase representa una tabla en la base de datos.
+
+---
+
+#### **`__abstract__ = True`**
+
+Le dice a SQLAlchemy que `BaseModel` es una clase abstracta — no debe crear una tabla para ella.  
+Solo las clases que heredan de `BaseModel` (`User`, `Place`, etc.) tendrán tablas propias.
+
+```
+BaseModel  →  __abstract__ = True  →  sin tabla ❌
+User       →  hereda BaseModel     →  tabla 'users' ✅
+Place      →  hereda BaseModel     →  tabla 'places' ✅
+```
+
+---
+
+#### `id`
+```python
+id = db.Column(
+        db.String(36),
+        primary_key=True,
+        default=lambda: str(uuid.uuid4())
+    )
+```
+
+| Parámetro | Valor | Para qué sirve |
+|---|---|---|
+| `db.String(36)` | tipo texto de 36 caracteres | un UUID tiene exactamente 36 caracteres |
+| `primary_key=True` | clave primaria | identifica unívocamente cada fila |
+| `default=lambda: str(uuid.uuid4())` | valor por defecto | genera un UUID automáticamente al crear |
+
+---
+
+#### `created_at`
+```python
+created_at = db.Column(
+        db.DateTime,
+        default=lambda: datetime.now(timezone.utc)
+    )
+```
+
+- `db.DateTime` — tipo fecha y hora en la base de datos
+- `default=lambda: datetime.now(timezone.utc)` — se establece automáticamente al crear el registro
+
+##### **¿Por qué `lambda: datetime.now(timezone.utc)` y no `datetime.now(timezone.utc)` directo?**
+
+Sin `lambda` el valor se evaluaría una sola vez cuando Python carga el archivo — todos los registros tendrían la misma fecha. Con `lambda` se ejecuta cada vez que se crea un registro nuevo.
+
+##### **¿Por qué `timezone.utc` y no `datetime.now()` a secas?**
+
+`datetime.now()` usa la hora local de tu máquina. `datetime.now(timezone.utc)` usa la hora universal (UTC) — más consistente cuando hay usuarios en distintas zonas horarias.  
+`utcnow()` hacía lo mismo pero está deprecado en Python 3.12+.
+
+```
+datetime.now()              →  hora local de tu máquina ❌
+datetime.utcnow()           →  UTC pero deprecado ⚠️
+datetime.now(timezone.utc)  →  UTC moderno ✅
+```
+
+---
+
+#### `updated_at`
+```python
+updated_at = db.Column(
+        db.DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc)
+    )
+```
+
+- `onupdate=lambda: datetime.now(timezone.utc)` — se actualiza automáticamente cada vez que se modifica el registro
+- No hay que llamar a `save()` manualmente — SQLAlchemy lo hace solo
+
+---
+
+#### **¿Por qué ya no necesitamos `__init__`?**
+
+Antes `__init__` era necesario para asignar los valores iniciales manualmente:
+```python
+def __init__(self):
+    self.id = str(uuid.uuid4())       # había que asignarlo a mano
+    self.created_at = datetime.now()  # había que asignarlo a mano
+    self.updated_at = datetime.now()  # había que asignarlo a mano
+```
+
+Ahora esos valores están definidos como `default` en las columnas — SQLAlchemy los asigna automáticamente al crear un objeto nuevo:
+```
+Antes:   __init__() → vos asignás los valores
+Después: db.Column(default=...) → SQLAlchemy asigna los valores ✅
+```
+
+---
+
+## Paso 2 — `app/models/user.py`
+```python
+#!/usr/bin/python3
+import re
+from app.extensions import db, bcrypt
+from app.models.base_model import BaseModel
+
+
+class User(BaseModel):
+    __tablename__ = 'users'  # Name of the table in the database
+
+    # Columns mapped to the database
+    first_name = db.Column(db.String(50), nullable=False)
+    last_name  = db.Column(db.String(50), nullable=False)
+    email      = db.Column(db.String(120), nullable=False, unique=True)
+    password   = db.Column(db.String(128), nullable=False)
+    is_admin   = db.Column(db.Boolean, default=False)
+
+    def hash_password(self, password):
+        """Hashes the password before storing it."""
+        self.password = bcrypt.generate_password_hash(password).decode('utf-8')
+
+    def verify_password(self, password):
+        """Verifies if the provided password matches the hashed password."""
+        return bcrypt.check_password_hash(self.password, password)
+
+    def update_profile(self, data):
+        """Update user profile with validation"""
+        if "first_name" in data:
+            if not data["first_name"] or len(data["first_name"]) > 50:
+                raise ValueError("Invalid first_name")
+        if "last_name" in data:
+            if not data["last_name"] or len(data["last_name"]) > 50:
+                raise ValueError("Invalid last_name")
+        if "email" in data:
+            if not data["email"] or not re.match(r"[^@]+@[^@]+\.[^@]+", data["email"]):
+                raise ValueError("Invalid email")
+        self.update(data)
+```
+
+### Cambios explicados
+#### **`__tablename__ = 'users'`**
+
+Define el nombre exacto de la tabla en la base de datos.
+Sin esto SQLAlchemy genera un nombre automático, pero es mejor ser explícito.
+
+```
+class User  →  __tablename__ = 'users'  →  tabla 'users' en SQLite
+```
+
+---
+
+**Columnas SQLAlchemy**
+
+Cada atributo es ahora una columna de la base de datos:
+
+| Columna | Tipo | Restricción | Para qué sirve |
+|---|---|---|---|
+| `first_name` | String(50) | `nullable=False` | no puede estar vacío |
+| `last_name` | String(50) | `nullable=False` | no puede estar vacío |
+| `email` | String(120) | `nullable=False, unique=True` | no puede repetirse |
+| `password` | String(128) | `nullable=False` | hash bcrypt ocupa ~60 chars |
+| `is_admin` | Boolean | `default=False` | False por defecto |
+
+##### **¿Qué es `nullable=False`?**
+Le dice a la base de datos que ese campo es obligatorio — no puede guardarse un registro sin ese valor.
+
+##### **¿Qué es `unique=True`?**
+Le dice a la base de datos que no puede haber dos filas con el mismo email.  
+Es una restricción a nivel de base de datos, además de la validación que ya teníamos en la Facade.
+
+---
+
+#### **`from app.extensions import db, bcrypt`**
+**Antes**
+Antes `bcrypt` se importaba dentro de cada método para evitar circular import:
+```python
+def hash_password(self, password):
+    from app import bcrypt  # import dentro del método
+```
+**Ahora**
+Ahora que tenemos `extensions.py` el circular import ya no existe — se puede importar al inicio del archivo directamente:
+```python
+from app.extensions import db, bcrypt  # import al inicio ✅
+```
+
+---
+
+**¿Qué se eliminó?**
+
+- `__init__` — SQLAlchemy lo maneja automáticamente con los `default` de las columnas
+- Validaciones del `__init__` — se mantienen en `update_profile()` para los updates
+- `self.places = []` — las relaciones se definen con `db.relationship()` en el Task 7
+
+---
+
+## Paso 3 — `user_repository.py`
+### ¿Por qué un `UserRepository` específico?
+
+El `SQLAlchemyRepository` genérico funciona para operaciones básicas (add, get, delete).  
+Pero `User` tiene operaciones específicas como buscar por email que no tiene ninguna otra entidad.
+
+```
+SQLAlchemyRepository  →  CRUD genérico para cualquier modelo
+UserRepository        →  CRUD genérico + operaciones específicas de User
+```
+
+---
+
+### Código
+```python
+#!/usr/bin/python3
+from app.models.user import User
+from app.persistence.repository import SQLAlchemyRepository
+
+
+class UserRepository(SQLAlchemyRepository):
+    def __init__(self):
+        # Passes the User model to the parent class SQLAlchemyRepository
+        super().__init__(User)
+
+    def get_user_by_email(self, email):
+        # SELECT * FROM users WHERE email = 'email' LIMIT 1
+        return self.model.query.filter_by(email=email).first()
+```
+
+---
+
+### Explicación
+
+#### **`class UserRepository(SQLAlchemyRepository)`**
+
+Hereda de `SQLAlchemyRepository` — recibe todos los métodos CRUD:
+- `add()`, `get()`, `get_all()`, `update()`, `delete()`, `get_by_attribute()`
+
+Y agrega el método específico de User:
+- `get_user_by_email()`
+
+```
+SQLAlchemyRepository
+    │
+    └── UserRepository
+            ├── add()                 ← heredado
+            ├── get()                 ← heredado
+            ├── get_all()             ← heredado
+            ├── update()              ← heredado
+            ├── delete()              ← heredado
+            ├── get_by_attribute()    ← heredado
+            └── get_user_by_email()   ← nuevo ✅
+```
+
+---
+
+#### **`super().__init__(User)`**
+
+Llama al `__init__` del padre `SQLAlchemyRepository` pasándole el modelo `User`.  
+Es lo mismo que hacer `SQLAlchemyRepository(User)` pero desde adentro de la clase.
+
+```python
+# Esto:
+self.user_repo = UserRepository()
+
+# Es equivalente a esto pero con métodos extra:
+self.user_repo = SQLAlchemyRepository(User)
+```
+##### `SQLAlchemyRepository(User)` vs `UserRepository()`
+Cuando hacés `SQLAlchemyRepository(User)` le pasás el modelo manualmente cada vez:
+```python
+pythonself.user_repo = SQLAlchemyRepository(User)  # tenés que pasarle User
+```
+
+`UserRepository` ya sabe internamente que trabaja con `User` — no hay que pasarle nada:
+```python
+self.user_repo = UserRepository()  # ya sabe que es User
+```
+
+¿Por qué? Porque en el __init__ de UserRepository ya está hardcodeado:
+```python
+class UserRepository(SQLAlchemyRepository):
+    def __init__(self):
+        super().__init__(User)  # ← User ya está acá adentro
+
+class UserRepository(SQLAlchemyRepository):
+    def __init__(self):
+        super().__init__(User)  # ← User ya está acá adentro
+```
+
+---
+
+Es como la diferencia entre:
+```python
+# Sin UserRepository — tenés que recordar pasarle User cada vez
+repo = SQLAlchemyRepository(User)
+repo.get_user_by_email("john@example.com")  # ← esto no existe, error ❌
+
+# Con UserRepository — ya sabe que es User y tiene métodos extra
+repo = UserRepository()
+repo.get_user_by_email("john@example.com")  # ← funciona ✅
+```
+#### **En resumen:** 
+UserRepository es un SQLAlchemyRepository especializado para User que ya tiene el modelo configurado y métodos extra específicos de usuarios.
+
+### **`get_user_by_email()`**
+
+```python
+return self.model.query.filter_by(email=email).first()
+```
+
+Genera esta query SQL:
+```sql
+SELECT * FROM users WHERE email = 'john@example.com' LIMIT 1
+```
+
+- `filter_by(email=email)` — filtra por el campo email
+- `.first()` — devuelve el primer resultado o `None` si no existe
+
+#### **¿No teníamos ya `get_by_attribute("email", email)` en el repositorio genérico?**
+
+Sí, pero `get_user_by_email()` es más explícito y semánticamente más claro:
+```python
+# Genérico — funciona pero menos claro:
+self.user_repo.get_by_attribute("email", "john@example.com")
+
+# Específico — más claro y más fácil de mantener:
+self.user_repo.get_user_by_email("john@example.com")
+```
+
+---
+
+## Paso 4 —`facade.py`
+### ¿Qué cambia?
+
+Dos cosas únicamente:
+1. `user_repo` usa `UserRepository()` en vez de `SQLAlchemyRepository(User)`
+2. `get_user_by_email()` usa el método específico del `UserRepository`
+
+---
+
+### Cambios en `__init__`
+```python
+from app.persistence.repository import SQLAlchemyRepository
+from app.persistence.user_repository import UserRepository  # NEW
+
+class HBnBFacade:
+    def __init__(self):
+        self.user_repo    = UserRepository()                 # NEW: specific repo for User
+        self.place_repo   = SQLAlchemyRepository(Place)
+        self.review_repo  = SQLAlchemyRepository(Review)
+        self.amenity_repo = SQLAlchemyRepository(Amenity)
+```
+
+**¿Por qué solo `user_repo` cambia y los demás no?**
+
+Porque por ahora solo `User` tiene operaciones específicas (`get_user_by_email`).
+`Place`, `Review` y `Amenity` solo necesitan CRUD básico — `SQLAlchemyRepository` genérico es suficiente.
+
+En el Task 7 cuando se mapeen los otros modelos, se crearán repositorios específicos para ellos también si hace falta.
+
+---
+
+### Cambios en `get_user_by_email`
+
+**Antes:**
+```python
+def get_user_by_email(self, email):
+    return self.user_repo.get_by_attribute("email", email)
+```
+
+**Después:**
+```python
+def get_user_by_email(self, email):
+    return self.user_repo.get_user_by_email(email)  # uses UserRepository specific method
+```
+
+**¿Cuál es la diferencia real?**
+
+Ambos hacen la misma query SQL por debajo:
+```sql
+SELECT * FROM users WHERE email = 'john@example.com' LIMIT 1
+```
+
+Pero el segundo es más explícito — el nombre del método dice exactamente qué hace.
+Además si en el futuro `get_user_by_email` necesita lógica extra (logs, caché, etc.), se modifica solo en `UserRepository` sin tocar la Facade.
+
+---
+
+## Paso 5 — Inicializar la Base de Datos
+### ¿Qué hace `db.create_all()`?
+Lee todos los modelos que heredan de `db.Model` (`User`, `Place`, etc.) y crea las tablas correspondientes en la base de datos si no existen.
+
+```
+db.create_all()
+    │
+    ├── lee User       → crea tabla 'users'
+    ├── lee Place      → crea tabla 'places' (Task 7)
+    ├── lee Review     → crea tabla 'reviews' (Task 7)
+    └── lee Amenity    → crea tabla 'amenities' (Task 7)
+```
+
+Por ahora solo crea `users` porque es el único modelo mapeado hasta ahora.
+
+---
+
+### Cambio en `app/__init__.py`
+
+```python
+# ANTES (comentado en Task 5 porque los modelos no estaban mapeados):
+# with app.app_context():
+#     db.create_all()
+
+# DESPUÉS (descomentado ahora que User está mapeado):
+with app.app_context():
+    db.create_all()
+```
+
+---
+
+### ¿Por qué `app.app_context()`?
+
+SQLAlchemy necesita saber a qué app Flask pertenece para crear las tablas.  
+`app.app_context()` le da ese contexto — es como decirle "operá dentro de esta app".
+
+```python
+with app.app_context():   # entramos al contexto de la app
+    db.create_all()       # db sabe qué app usar y dónde está la base de datos
+```
+
+Sin el `app_context()` SQLAlchemy no sabe qué configuración usar y tira un error.
+
+---
+
+### ¿Dónde se crea el archivo?
+
+Al arrancar la app con `python3 run.py`, SQLite crea automáticamente el archivo:
+
+```
+part3/
+  └── instance/
+        └── development.db   ← se crea aquí
+```
+
+Si el archivo ya existe, `db.create_all()` no hace nada — no borra datos existentes.
+
+```
+¿existe development.db?
+    ├── NO  →  lo crea + crea las tablas
+    └── SÍ  →  no hace nada ✅
+```
+
+---
+
+### Verificación
+
+Después de arrancar la app verificar que el archivo existe:
+
+```bash
+ls instance/
+# development.db
+```
+#### Insertar el admin directo con Flask shell:
+```bash
+flask shell
+```
+
+```python
+from app.models.user import User
+from app.extensions import db, bcrypt
+
+admin = User(
+    first_name="Admin",
+    last_name="User",
+    email="admin@hbnb.com",
+    password="temp",
+    is_admin=True
+)
+admin.hash_password("admin1234")
+db.session.add(admin)
+db.session.commit()
+print("Admin created:", admin.id)
+```
+#### Salir de flask
+```bash
+curl -X POST "http://127.0.0.1:5000/api/v1/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{"email": "admin@hbnb.com", "password": "admin1234"}'
+```
+
+
+---
+
+## Resumen de la arquitectura después del Task 6
+
+```
+Facade
+    │
+    ├── user_repo    = UserRepository()              → users table
+    ├── place_repo   = SQLAlchemyRepository(Place)   → places table
+    ├── review_repo  = SQLAlchemyRepository(Review)  → reviews table
+    └── amenity_repo = SQLAlchemyRepository(Amenity) → amenities table
+```
+
+```
+UserRepository
+    │
+    ├── hereda de SQLAlchemyRepository
+    │       ├── add()
+    │       ├── get()
+    │       ├── get_all()
+    │       ├── update()
+    │       ├── delete()
+    │       └── get_by_attribute()
+    │
+    └── agrega get_user_by_email()  ← específico de User
+```
+
+---
+
+## Recordatorio
+### `db`
+Es la instancia de **SQLAlchemy** que creamos en `extensions.py`:
+```python
+db = SQLAlchemy()
+```
+Es el objeto central que conecta Python con la base de datos.  
+Se usa para tres cosas:
+1. Definir tablas — con `db.Model` y `db.Column`:
+```python
+class User(db.Model):
+    email = db.Column(db.String(120))
+```
+2. Hacer queries — consultar la base de datos:
+```python
+User.query.all()
+db.session.get(User, user_id)
+```
+3. Guardar cambios — escribir en la base de datos:
+```python
+db.session.add(user)
+db.session.commit()
+db.session.delete(user)
+```
+Sin `db` no hay conexión entre los modelos Python y la base de datos SQLite.
+
+---
+
+### `bcrypt`
+Es la instancia de Flask-Bcrypt que creamos en `extensions.py`:
+```python
+bcrypt = Bcrypt()
+```
+Se usa para dos cosas:
+1. Hashear la contraseña — antes de guardarla en la base de datos:
+```python
+self.password = bcrypt.generate_password_hash(password).decode('utf-8')
+```
+```
+"mipassword123"  →  bcrypt  →  "$2b$12$eKbB2dXk..."
+```
+2. Verificar la contraseña — al hacer login:
+```python
+bcrypt.check_password_hash(self.password, password)
+```
+```
+"mipassword123" + "$2b$12$eKbB2dXk..."  →  True o False
+```
+La contraseña nunca se guarda en texto plano — siempre como hash irreversible. Si alguien accede a la base de datos solo ve `$2b$12$...`, nunca la contraseña original.
+
+#### Verificacion
+Cuando hasheás una contraseña, el **salt** (semilla aleatoria) queda guardado dentro del mismo hash:
+```
+$2b$12$eKbB2dXk.xxxxx.SALT_AQUI.HASH_AQUI
+ │   │   └── salt + hash juntos
+ │   └── costo (cuántas veces se aplica el algoritmo)
+ └── versión de bcrypt
+```
+Entonces cuando verificás:
+```python
+pythonbcrypt.check_password_hash(self.password, password)
+```
+1. Lee el `hash` guardado `$2b$12$eKbB2dXk...`
+2. Extrae el salt que está adentro
+3. Hashea la contraseña ingresada **usando ese mismo salt**
+4. Compara los dos hashes
+```
+Guardado:  $2b$12$ABC...XYZ  (hash original)
+           └── salt = ABC
+
+Ingresado: "mipassword"
+           + salt ABC
+           → $2b$12$ABC...XYZ  (mismo resultado)
+```
+¿Son iguales? → True ✅
+Por eso aunque el hash sea diferente cada vez que lo generás (porque el salt es aleatorio), siempre podés verificar correctamente — el salt necesario para comparar ya está guardado dentro del hash mismo.
+
 
 ---
 ---

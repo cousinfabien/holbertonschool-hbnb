@@ -5,9 +5,9 @@ from app.models.amenity import Amenity
 from app.models.place import Place
 from app.models.review import Review
 from app.persistence.repository import SQLAlchemyRepository
-# from flask_bcrypt import Bcrypt
+from app.persistence.user_repository import UserRepository
 
-# _bcrypt = Bcrypt()
+
 class HBnBFacade:
     """
     Facade layer that connects the API (Presentation layer)
@@ -15,8 +15,8 @@ class HBnBFacade:
     """
 
     def __init__(self):
-        # NEW: each repo now receives the model class it manages
-        self.user_repo    = SQLAlchemyRepository(User)
+        # NEW: specific repo for User
+        self.user_repo    = UserRepository()
         self.place_repo   = SQLAlchemyRepository(Place)
         self.review_repo  = SQLAlchemyRepository(Review)
         self.amenity_repo = SQLAlchemyRepository(Amenity)
@@ -62,10 +62,8 @@ class HBnBFacade:
 
     # READ (by email)
     def get_user_by_email(self, email):
-        """
-        Retrieve a user by email.
-        """
-        return self.user_repo.get_by_attribute("email", email)
+        """ Retrieve a user by email. """
+        return self.user_repo.get_user_by_email(email)  # NEW: uses UserRepository method
 
     # READ (all users)
     def get_all_users(self):

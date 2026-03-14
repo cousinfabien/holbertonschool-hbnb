@@ -1,33 +1,24 @@
 #!/usr/bin/python3
 import re
+from app.extensions import db, bcrypt
 from app.models.base_model import BaseModel
 
 class User(BaseModel):
-    def __init__(self, first_name, last_name, email, password="", is_admin=False):
-        super().__init__()
+    __tablename__ = 'users'  # Name of the table in the database
 
-        if not first_name or len(first_name) > 50:
-            raise ValueError("Invalid first_name")
-        if not last_name or len(last_name) > 50:
-            raise ValueError("Invalid last_name")
-        if not email or not re.match(r"[^@]+@[^@]+\.[^@]+", email):
-            raise ValueError("Invalid email")
-
-        self.first_name = first_name
-        self.last_name = last_name
-        self.email = email
-        self.password = password
-        self.is_admin = is_admin
-        self.places = []
+    # Columns mapped to the database
+    first_name = db.Column(db.String(50), nullable=False)
+    last_name  = db.Column(db.String(50), nullable=False)
+    email      = db.Column(db.String(120), nullable=False, unique=True)
+    password   = db.Column(db.String(128), nullable=False)
+    is_admin   = db.Column(db.Boolean, default=False)
 
     def hash_password(self, password):
         """Hashes the password before storing it."""
-        from app import bcrypt
         self.password = bcrypt.generate_password_hash(password).decode('utf-8')
-    
+
     def verify_password(self, password):
         """Verifies if the provided password matches the hashed password."""
-        from app import bcrypt
         return bcrypt.check_password_hash(self.password, password)
     
     def update_profile(self, data):
