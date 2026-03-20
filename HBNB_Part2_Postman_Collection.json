@@ -1,0 +1,1282 @@
+{
+  "info": {
+    "name": "HBNB Part2 - API Tests",
+    "_postman_id": "hbnb-part2-collection",
+    "description": "Collection complète pour tester toutes les routes API du projet HBNB Part2 (Holberton School). Couvre les réponses 20X, 40X et les edge cases.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://127.0.0.1:5000/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "user_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "user_id_2",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "amenity_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "amenity_id_2",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "place_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "review_id",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "👤 Users",
+      "item": [
+        {
+          "name": "✅ POST /users - Create user (201)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Has id', () => pm.expect(pm.response.json()).to.have.property('id'));",
+                  "pm.test('Has email', () => pm.expect(pm.response.json().email).to.eql('john.doe@example.com'));",
+                  "const json = pm.response.json();",
+                  "if (json.id) pm.collectionVariables.set('user_id', json.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"first_name\": \"John\",\n  \"last_name\": \"Doe\",\n  \"email\": \"john.doe@example.com\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/users/", "host": ["{{base_url}}"], "path": ["users", ""] }
+          }
+        },
+        {
+          "name": "✅ POST /users - Create second user (201)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "if (json.id) pm.collectionVariables.set('user_id_2', json.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"first_name\": \"Jane\",\n  \"last_name\": \"Smith\",\n  \"email\": \"jane.smith@example.com\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/users/", "host": ["{{base_url}}"], "path": ["users", ""] }
+          }
+        },
+        {
+          "name": "❌ POST /users - Duplicate email (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Has error field', () => pm.expect(pm.response.json()).to.have.property('error'));",
+                  "pm.test('Error mentions email', () => pm.expect(pm.response.json().error).to.include('Email already registered'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"first_name\": \"John\",\n  \"last_name\": \"Doe\",\n  \"email\": \"john.doe@example.com\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/users/", "host": ["{{base_url}}"], "path": ["users", ""] }
+          }
+        },
+        {
+          "name": "❌ POST /users - Invalid email format (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Has error field', () => pm.expect(pm.response.json()).to.have.property('error'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"first_name\": \"John\",\n  \"last_name\": \"Doe\",\n  \"email\": \"not-a-valid-email\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/users/", "host": ["{{base_url}}"], "path": ["users", ""] }
+          }
+        },
+        {
+          "name": "❌ POST /users - Missing required field (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"first_name\": \"John\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/users/", "host": ["{{base_url}}"], "path": ["users", ""] }
+          }
+        },
+        {
+          "name": "⚠️ POST /users - first_name too long (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"first_name\": \"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\n  \"last_name\": \"Doe\",\n  \"email\": \"toolong@example.com\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/users/", "host": ["{{base_url}}"], "path": ["users", ""] }
+          }
+        },
+        {
+          "name": "✅ GET /users - List all users (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns array', () => pm.expect(pm.response.json()).to.be.an('array'));",
+                  "pm.test('At least 2 users', () => pm.expect(pm.response.json().length).to.be.at.least(2));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/users/", "host": ["{{base_url}}"], "path": ["users", ""] }
+          }
+        },
+        {
+          "name": "✅ GET /users/:id - Get user by ID (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Correct id', () => pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('user_id')));",
+                  "pm.test('Has email', () => pm.expect(pm.response.json()).to.have.property('email'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/users/{{user_id}}", "host": ["{{base_url}}"], "path": ["users", "{{user_id}}"] }
+          }
+        },
+        {
+          "name": "❌ GET /users/:id - User not found (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 404', () => pm.response.to.have.status(404));",
+                  "pm.test('Has error field', () => pm.expect(pm.response.json()).to.have.property('error'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/users/nonexistent-id-0000", "host": ["{{base_url}}"], "path": ["users", "nonexistent-id-0000"] }
+          }
+        },
+        {
+          "name": "✅ PUT /users/:id - Update user (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('First name updated', () => pm.expect(pm.response.json().first_name).to.eql('Johnny'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"first_name\": \"Johnny\",\n  \"last_name\": \"Doe\",\n  \"email\": \"john.doe@example.com\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/users/{{user_id}}", "host": ["{{base_url}}"], "path": ["users", "{{user_id}}"] }
+          }
+        },
+        {
+          "name": "❌ PUT /users/:id - Email taken by another user (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Error mentions email', () => pm.expect(pm.response.json().error).to.include('Email already registered'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"first_name\": \"Johnny\",\n  \"last_name\": \"Doe\",\n  \"email\": \"jane.smith@example.com\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/users/{{user_id}}", "host": ["{{base_url}}"], "path": ["users", "{{user_id}}"] }
+          }
+        },
+        {
+          "name": "❌ PUT /users/:id - User not found (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 404', () => pm.response.to.have.status(404));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"first_name\": \"Ghost\",\n  \"last_name\": \"User\",\n  \"email\": \"ghost@example.com\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/users/nonexistent-id-0000", "host": ["{{base_url}}"], "path": ["users", "nonexistent-id-0000"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🏖️ Amenities",
+      "item": [
+        {
+          "name": "✅ POST /amenities - Create amenity (201)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Has id', () => pm.expect(pm.response.json()).to.have.property('id'));",
+                  "pm.test('Has name', () => pm.expect(pm.response.json().name).to.eql('WiFi'));",
+                  "const json = pm.response.json();",
+                  "if (json.id) pm.collectionVariables.set('amenity_id', json.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"WiFi\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/amenities/", "host": ["{{base_url}}"], "path": ["amenities", ""] }
+          }
+        },
+        {
+          "name": "✅ POST /amenities - Create second amenity (201)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "if (json.id) pm.collectionVariables.set('amenity_id_2', json.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Pool\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/amenities/", "host": ["{{base_url}}"], "path": ["amenities", ""] }
+          }
+        },
+        {
+          "name": "❌ POST /amenities - Duplicate name (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Has error', () => pm.expect(pm.response.json()).to.have.property('error'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"WiFi\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/amenities/", "host": ["{{base_url}}"], "path": ["amenities", ""] }
+          }
+        },
+        {
+          "name": "❌ POST /amenities - Empty name (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/amenities/", "host": ["{{base_url}}"], "path": ["amenities", ""] }
+          }
+        },
+        {
+          "name": "⚠️ POST /amenities - Name too long >50 chars (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/amenities/", "host": ["{{base_url}}"], "path": ["amenities", ""] }
+          }
+        },
+        {
+          "name": "✅ GET /amenities - List all amenities (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns array', () => pm.expect(pm.response.json()).to.be.an('array'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/amenities/", "host": ["{{base_url}}"], "path": ["amenities", ""] }
+          }
+        },
+        {
+          "name": "✅ GET /amenities/:id - Get amenity by ID (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has id', () => pm.expect(pm.response.json()).to.have.property('id'));",
+                  "pm.test('Has name', () => pm.expect(pm.response.json()).to.have.property('name'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/amenities/{{amenity_id}}", "host": ["{{base_url}}"], "path": ["amenities", "{{amenity_id}}"] }
+          }
+        },
+        {
+          "name": "❌ GET /amenities/:id - Not found (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 404', () => pm.response.to.have.status(404));",
+                  "pm.test('Has error', () => pm.expect(pm.response.json()).to.have.property('error'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/amenities/nonexistent-id-0000", "host": ["{{base_url}}"], "path": ["amenities", "nonexistent-id-0000"] }
+          }
+        },
+        {
+          "name": "✅ PUT /amenities/:id - Update amenity (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has amenity object', () => pm.expect(pm.response.json()).to.have.property('amenity'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"High-Speed WiFi\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/amenities/{{amenity_id}}", "host": ["{{base_url}}"], "path": ["amenities", "{{amenity_id}}"] }
+          }
+        },
+        {
+          "name": "❌ PUT /amenities/:id - Not found (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 404', () => pm.response.to.have.status(404));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Jacuzzi\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/amenities/nonexistent-id-0000", "host": ["{{base_url}}"], "path": ["amenities", "nonexistent-id-0000"] }
+          }
+        },
+        {
+          "name": "❌ PUT /amenities/:id - Duplicate name (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Pool\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/amenities/{{amenity_id}}", "host": ["{{base_url}}"], "path": ["amenities", "{{amenity_id}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🏠 Places",
+      "item": [
+        {
+          "name": "✅ POST /places - Create place (201)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Has id', () => pm.expect(pm.response.json()).to.have.property('id'));",
+                  "pm.test('Has title', () => pm.expect(pm.response.json().title).to.eql('Cozy Apartment'));",
+                  "const json = pm.response.json();",
+                  "if (json.id) pm.collectionVariables.set('place_id', json.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Cozy Apartment\",\n  \"description\": \"A nice place to stay\",\n  \"price\": 120.0,\n  \"latitude\": 48.8566,\n  \"longitude\": 2.3522,\n  \"owner_id\": \"{{user_id}}\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/places/", "host": ["{{base_url}}"], "path": ["places", ""] }
+          }
+        },
+        {
+          "name": "✅ POST /places - With amenities (201)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Beach House\",\n  \"description\": \"By the sea\",\n  \"price\": 250.0,\n  \"latitude\": 43.2965,\n  \"longitude\": 5.3698,\n  \"owner_id\": \"{{user_id}}\",\n  \"amenities\": [\"{{amenity_id_2}}\"]\n}"
+            },
+            "url": { "raw": "{{base_url}}/places/", "host": ["{{base_url}}"], "path": ["places", ""] }
+          }
+        },
+        {
+          "name": "❌ POST /places - Owner not found (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Error mentions owner', () => pm.expect(pm.response.json().error).to.include('Owner not found'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Ghost Place\",\n  \"description\": \"Owner does not exist\",\n  \"price\": 100.0,\n  \"latitude\": 48.8566,\n  \"longitude\": 2.3522,\n  \"owner_id\": \"nonexistent-owner-id\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/places/", "host": ["{{base_url}}"], "path": ["places", ""] }
+          }
+        },
+        {
+          "name": "❌ POST /places - Invalid price (negative) (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Negative Price Place\",\n  \"price\": -50.0,\n  \"latitude\": 48.8566,\n  \"longitude\": 2.3522,\n  \"owner_id\": \"{{user_id}}\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/places/", "host": ["{{base_url}}"], "path": ["places", ""] }
+          }
+        },
+        {
+          "name": "❌ POST /places - Invalid latitude (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Invalid Lat Place\",\n  \"price\": 100.0,\n  \"latitude\": 999.0,\n  \"longitude\": 2.3522,\n  \"owner_id\": \"{{user_id}}\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/places/", "host": ["{{base_url}}"], "path": ["places", ""] }
+          }
+        },
+        {
+          "name": "❌ POST /places - Invalid longitude (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Invalid Lon Place\",\n  \"price\": 100.0,\n  \"latitude\": 48.8566,\n  \"longitude\": 999.0,\n  \"owner_id\": \"{{user_id}}\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/places/", "host": ["{{base_url}}"], "path": ["places", ""] }
+          }
+        },
+        {
+          "name": "❌ POST /places - Amenity not found (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Error mentions amenity', () => pm.expect(pm.response.json().error).to.include('Amenity not found'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Phantom Amenities\",\n  \"price\": 100.0,\n  \"latitude\": 48.8566,\n  \"longitude\": 2.3522,\n  \"owner_id\": \"{{user_id}}\",\n  \"amenities\": [\"nonexistent-amenity-id\"]\n}"
+            },
+            "url": { "raw": "{{base_url}}/places/", "host": ["{{base_url}}"], "path": ["places", ""] }
+          }
+        },
+        {
+          "name": "❌ POST /places - Missing required fields (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"No title, no price, no coords\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/places/", "host": ["{{base_url}}"], "path": ["places", ""] }
+          }
+        },
+        {
+          "name": "✅ GET /places - List all places (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns array', () => pm.expect(pm.response.json()).to.be.an('array'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/places/", "host": ["{{base_url}}"], "path": ["places", ""] }
+          }
+        },
+        {
+          "name": "✅ GET /places/:id - Get place by ID (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has id', () => pm.expect(pm.response.json()).to.have.property('id'));",
+                  "pm.test('Has owner', () => pm.expect(pm.response.json()).to.have.property('owner'));",
+                  "pm.test('Has amenities list', () => pm.expect(pm.response.json().amenities).to.be.an('array'));",
+                  "pm.test('Has reviews list', () => pm.expect(pm.response.json().reviews).to.be.an('array'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/places/{{place_id}}", "host": ["{{base_url}}"], "path": ["places", "{{place_id}}"] }
+          }
+        },
+        {
+          "name": "❌ GET /places/:id - Not found (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 404', () => pm.response.to.have.status(404));",
+                  "pm.test('Has error', () => pm.expect(pm.response.json()).to.have.property('error'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/places/nonexistent-id-0000", "host": ["{{base_url}}"], "path": ["places", "nonexistent-id-0000"] }
+          }
+        },
+        {
+          "name": "✅ PUT /places/:id - Update place (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Title updated', () => pm.expect(pm.response.json().title).to.eql('Updated Apartment'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Updated Apartment\",\n  \"description\": \"Even nicer now\",\n  \"price\": 150.0,\n  \"latitude\": 48.8566,\n  \"longitude\": 2.3522,\n  \"owner_id\": \"{{user_id}}\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/places/{{place_id}}", "host": ["{{base_url}}"], "path": ["places", "{{place_id}}"] }
+          }
+        },
+        {
+          "name": "❌ PUT /places/:id - Not found (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 404', () => pm.response.to.have.status(404));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Ghost Place\",\n  \"price\": 100.0,\n  \"latitude\": 48.8566,\n  \"longitude\": 2.3522,\n  \"owner_id\": \"{{user_id}}\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/places/nonexistent-id-0000", "host": ["{{base_url}}"], "path": ["places", "nonexistent-id-0000"] }
+          }
+        },
+        {
+          "name": "❌ PUT /places/:id - Negative price (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"price\": -99.0\n}"
+            },
+            "url": { "raw": "{{base_url}}/places/{{place_id}}", "host": ["{{base_url}}"], "path": ["places", "{{place_id}}"] }
+          }
+        },
+        {
+          "name": "✅ GET /places/:id/reviews - Get reviews for place (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns array', () => pm.expect(pm.response.json()).to.be.an('array'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/places/{{place_id}}/reviews", "host": ["{{base_url}}"], "path": ["places", "{{place_id}}", "reviews"] }
+          }
+        },
+        {
+          "name": "❌ GET /places/:id/reviews - Place not found (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 404', () => pm.response.to.have.status(404));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/places/nonexistent-id-0000/reviews", "host": ["{{base_url}}"], "path": ["places", "nonexistent-id-0000", "reviews"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "⭐ Reviews",
+      "item": [
+        {
+          "name": "✅ POST /reviews - Create review (201)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Has id', () => pm.expect(pm.response.json()).to.have.property('id'));",
+                  "pm.test('Has rating', () => pm.expect(pm.response.json().rating).to.eql(4));",
+                  "const json = pm.response.json();",
+                  "if (json.id) pm.collectionVariables.set('review_id', json.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"Great place, loved it!\",\n  \"rating\": 4,\n  \"user_id\": \"{{user_id_2}}\",\n  \"place_id\": \"{{place_id}}\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/reviews/", "host": ["{{base_url}}"], "path": ["reviews", ""] }
+          }
+        },
+        {
+          "name": "❌ POST /reviews - Rating out of range (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Has error', () => pm.expect(pm.response.json()).to.have.property('error'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"Too low rating\",\n  \"rating\": 0,\n  \"user_id\": \"{{user_id_2}}\",\n  \"place_id\": \"{{place_id}}\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/reviews/", "host": ["{{base_url}}"], "path": ["reviews", ""] }
+          }
+        },
+        {
+          "name": "❌ POST /reviews - Rating above 5 (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"Rating too high\",\n  \"rating\": 6,\n  \"user_id\": \"{{user_id_2}}\",\n  \"place_id\": \"{{place_id}}\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/reviews/", "host": ["{{base_url}}"], "path": ["reviews", ""] }
+          }
+        },
+        {
+          "name": "❌ POST /reviews - Missing text (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rating\": 3,\n  \"user_id\": \"{{user_id_2}}\",\n  \"place_id\": \"{{place_id}}\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/reviews/", "host": ["{{base_url}}"], "path": ["reviews", ""] }
+          }
+        },
+        {
+          "name": "❌ POST /reviews - User not found (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Error mentions user', () => pm.expect(pm.response.json().error).to.include('User not found'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"Review from ghost user\",\n  \"rating\": 3,\n  \"user_id\": \"nonexistent-user-id\",\n  \"place_id\": \"{{place_id}}\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/reviews/", "host": ["{{base_url}}"], "path": ["reviews", ""] }
+          }
+        },
+        {
+          "name": "❌ POST /reviews - Place not found (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Error mentions place', () => pm.expect(pm.response.json().error).to.include('Place not found'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"Review for ghost place\",\n  \"rating\": 3,\n  \"user_id\": \"{{user_id_2}}\",\n  \"place_id\": \"nonexistent-place-id\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/reviews/", "host": ["{{base_url}}"], "path": ["reviews", ""] }
+          }
+        },
+        {
+          "name": "✅ GET /reviews - List all reviews (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns array', () => pm.expect(pm.response.json()).to.be.an('array'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/reviews/", "host": ["{{base_url}}"], "path": ["reviews", ""] }
+          }
+        },
+        {
+          "name": "✅ GET /reviews/:id - Get review by ID (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has id', () => pm.expect(pm.response.json()).to.have.property('id'));",
+                  "pm.test('Has rating', () => pm.expect(pm.response.json()).to.have.property('rating'));",
+                  "pm.test('Has user_id', () => pm.expect(pm.response.json()).to.have.property('user_id'));",
+                  "pm.test('Has place_id', () => pm.expect(pm.response.json()).to.have.property('place_id'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/reviews/{{review_id}}", "host": ["{{base_url}}"], "path": ["reviews", "{{review_id}}"] }
+          }
+        },
+        {
+          "name": "❌ GET /reviews/:id - Not found (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 404', () => pm.response.to.have.status(404));",
+                  "pm.test('Has error', () => pm.expect(pm.response.json()).to.have.property('error'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/reviews/nonexistent-id-0000", "host": ["{{base_url}}"], "path": ["reviews", "nonexistent-id-0000"] }
+          }
+        },
+        {
+          "name": "✅ PUT /reviews/:id - Update review (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Rating updated', () => pm.expect(pm.response.json().rating).to.eql(5));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"Updated review - even better!\",\n  \"rating\": 5,\n  \"user_id\": \"{{user_id_2}}\",\n  \"place_id\": \"{{place_id}}\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/reviews/{{review_id}}", "host": ["{{base_url}}"], "path": ["reviews", "{{review_id}}"] }
+          }
+        },
+        {
+          "name": "❌ PUT /reviews/:id - Rating invalid (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"Bad rating\",\n  \"rating\": 10,\n  \"user_id\": \"{{user_id_2}}\",\n  \"place_id\": \"{{place_id}}\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/reviews/{{review_id}}", "host": ["{{base_url}}"], "path": ["reviews", "{{review_id}}"] }
+          }
+        },
+        {
+          "name": "❌ PUT /reviews/:id - Not found (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 404', () => pm.response.to.have.status(404));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"Does not matter\",\n  \"rating\": 3,\n  \"user_id\": \"{{user_id_2}}\",\n  \"place_id\": \"{{place_id}}\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/reviews/nonexistent-id-0000", "host": ["{{base_url}}"], "path": ["reviews", "nonexistent-id-0000"] }
+          }
+        },
+        {
+          "name": "✅ DELETE /reviews/:id - Delete review (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has message', () => pm.expect(pm.response.json()).to.have.property('message'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{base_url}}/reviews/{{review_id}}", "host": ["{{base_url}}"], "path": ["reviews", "{{review_id}}"] }
+          }
+        },
+        {
+          "name": "❌ DELETE /reviews/:id - Already deleted / Not found (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 404', () => pm.response.to.have.status(404));",
+                  "pm.test('Has error', () => pm.expect(pm.response.json()).to.have.property('error'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{base_url}}/reviews/{{review_id}}", "host": ["{{base_url}}"], "path": ["reviews", "{{review_id}}"] }
+          }
+        },
+        {
+          "name": "❌ DELETE /reviews/:id - Nonexistent ID (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 404', () => pm.response.to.have.status(404));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{base_url}}/reviews/nonexistent-id-0000", "host": ["{{base_url}}"], "path": ["reviews", "nonexistent-id-0000"] }
+          }
+        }
+      ]
+    }
+  ]
+}
