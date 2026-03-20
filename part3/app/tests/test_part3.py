@@ -162,8 +162,13 @@ class TestPasswordHashing:
     def test_verify_password_method(self, app):
         """User.verify_password() returns True for correct password."""
         with app.app_context():
-            user = User.__new__(User)
-            user.password = ""
+            user = User(
+                first_name="Test",
+                last_name="Verify",
+                email="verifytest@test.com",
+                password="temp",
+                is_admin=False
+            )
             user.hash_password("testpass")
             assert user.verify_password("testpass") is True
             assert user.verify_password("wrongpass") is False
