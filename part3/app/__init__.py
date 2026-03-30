@@ -2,6 +2,7 @@
 import os
 from flask import Flask
 from flask_restx import Api
+from flask_cors import CORS
 from app.extensions import db, bcrypt, jwt
 
 from app.api.v1.users import api as users_ns
@@ -19,6 +20,7 @@ def create_app(config_class=app_config.DevelopmentConfig):
     Returns a Flask app with all API namespaces registered.
     """
     app = Flask(__name__)
+    CORS(app)
     # Charge the configuration
     app.config.from_object(config_class)
     
