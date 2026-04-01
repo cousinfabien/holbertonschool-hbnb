@@ -3,26 +3,41 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>List of Places</title>
+    <title>HBnB - List of Places</title>
     <link rel="stylesheet" href="styles.css">
+    <link rel="icon" href="images/icon.png" type="image/png">
 </head>
 <body>
     <header>
-        <nav>
-            <a href="login.html" id="login-link">Login</a>
+        <nav class="navbar">
+            <div class="logo-container">
+                <img src="images/logo.png" alt="HBnB Logo" class="logo">
+            </div>
+            <div class="nav-links">
+                <a href="index.html">Home</a>
+                <a href="login.html" id="login-link" class="login-button">Login</a>
+                <button id="logout-btn" style="display: none;" class="login-button">Logout</button>
+            </div>
         </nav>
     </header>
+
     <main>
         <section id="filter">
-            <label for="price-filter">Max Price:</label>
-            <select id="price-filter">
-                <!-- Options will be populated dynamically -->
-            </select>
+            <div class="filter-container">
+                <label for="price-filter">Max Price:</label>
+                <select id="price-filter">
+                    </select>
+            </div>
         </section>
-        <section id="places-list">
-            <!-- List of places will be populated dynamically -->
-        </section>
+
+        <section id="places-list" class="places-grid">
+            </section>
     </main>
+
+    <footer>
+        <p>© 2026 HBnB. All rights reserved.</p>
+    </footer>
+
     <script src="scripts.js"></script>
 </body>
 </html>
