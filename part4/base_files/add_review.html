@@ -2,24 +2,44 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Add Review</title>
+    <title>HBnB - Add Review</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+    <header>
+        <nav class="navbar">
+            <div class="logo-container"><img src="images/logo.png" alt="Logo" class="logo"></div>
+            <div class="nav-links">
+                <a href="index.html">Home</a>
+                <button id="logout-btn" class="login-button">Logout</button>
+            </div>
+        </nav>
+    </header>
+
     <main>
-        <!-- Add something to idfentify the place you're reviewing -->
-        <form id="review-form">
-            <h2>Add a Review</h2>
-            <label for="review">Your Review:</label>
-            <textarea id="review" name="review" required></textarea>
-            <label for="rating">Rating:</label>
-            <select id="rating" name="rating" required>
-                <!-- Options for rating -->
-            </select>
-            <button type="submit">Submit Review</button>
-        </form>
+        <section class="form-container">
+            <form id="review-form" class="form">
+                <h2>Add a Review</h2>
+                <div class="form-group">
+                    <label for="review-text">Your Review:</label>
+                    <textarea id="review-text" name="text" rows="5" required placeholder="How was your stay?"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="rating">Rating:</label>
+                    <select id="rating" name="rating" required>
+                        <option value="5">5 - Excellent</option>
+                        <option value="4">4 - Very Good</option>
+                        <option value="3">3 - Good</option>
+                        <option value="2">2 - Fair</option>
+                        <option value="1">1 - Poor</option>
+                    </select>
+                </div>
+                <button type="submit" class="details-button">Submit Review</button>
+            </form>
+        </section>
     </main>
+
+    <footer><p>© 2026 HBnB. All rights reserved.</p></footer>
     <script src="scripts.js"></script>
 </body>
 </html>

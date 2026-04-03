@@ -23,7 +23,26 @@
       const placeId = getPlaceIdFromURL();
       const token = getCookie('token');
       const addReviewSection = document.getElementById('add-review');
+      const reviewForm = document.getElementById('review-form');
       
+      if (reviewForm) {
+          reviewForm.addEventListener('submit', async (event) => {
+          event.preventDefault(); // Empêche la page de se recharger inutilement
+
+            const token = getCookie('token');
+            const placeId = getPlaceIdFromURL(); // On récupère l'ID de la place depuis l'URL (?id=...)
+            const text = document.getElementById('review-text').value;
+            const rating = document.getElementById('rating').value;
+
+            if (!token) {
+                alert("You must be logged in to post a review.");
+                return;
+            }
+
+          await submitReview(token, placeId, text, rating);
+        });
+      }
+
       if(window.location.pathname.includes('place.html')){
         if (!placeId) {
           window.location.href = 'index.html';
@@ -60,6 +79,24 @@
       }
       checkAuthentification();
       setupPriceFilter();
+
+      if (window.location.pathname.includes('add_review.html')){
+        const token = checkAuthentification();
+        const placeId = getPlaceIdFromURL();
+
+        if (!placeId){
+          window.location.href = 'index.html';
+        }
+
+        if (reviewForm) {
+          reviewForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const reviewText = document.getElementById('review-text').value;
+            const rating = document.getElementById('rating').value;
+            await submitReview(token, placeId, reviewText, rating);
+          });
+        }
+      }
   });
 
   function getCookie(name){
@@ -94,10 +131,15 @@ async function fetchPlaces(token) {
 
     if (!token){
       if (loginLink) loginLink.style.display = 'block';
+      if (window.location.pathname.includes('add_review.html')) {
+            window.location.href = 'index.html';
+        }
+        return null;
     } else {
       if (loginLink) loginLink.style.display = 'none';
       fetchPlaces(token);
     }
+    return token;
     }
 
 function displayPlaces(places) {
@@ -193,7 +235,7 @@ function displayPlaces(places) {
             <p><strong>Price per night:</strong> $${place.price}</p>
             <p><strong>Description:</strong> ${place.description}</p>
             <p><strong>Location:</strong> Lat: ${place.latitude}, Long: ${place.longitude}</p>
-            <p><strong>Host:</strong> ${place.owner_name || 'Host information not available'}</p>
+            <p><strong>Host:</strong> ${place.owner ? `${place.owner.first_name} ${place.owner.last_name}` : 'Host information not available'}</p>
         </div>
 
         <div class="place-amenities">
@@ -209,7 +251,7 @@ function displayPlaces(places) {
                 ${place.reviews && place.reviews.length > 0 
                     ? place.reviews.map(review => `
                         <div class="review-card">
-                            <p><strong>${review.user_name}:</strong> ${review.text}</p>
+                            <p><strong>User ID: ${review.user_id}:</strong> ${review.text}</p>
                             <p>Rating: ${'★'.repeat(review.rating)}${'☆'.repeat(5 - review.rating)}</p>
                         </div>
                     `).join('') 
@@ -217,4 +259,36 @@ function displayPlaces(places) {
             </div>
         </div>
     `;
+}
+
+async function submitReview(token, placeId, text, rating) {
+    try {
+        const response = await fetch(`http://127.0.0.1:5000/api/v1/reviews/`, { // Route changée
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ 
+                text: text, 
+                rating: parseInt(rating),
+                place_id: placeId, // ID envoyé dans le corps du JSON
+                user_id: "placeholder" // Sera écrasé par le serveur via le token, mais requis par le modèle Swagger
+            })
+        });
+
+        if (response.ok) {
+            alert('Review submitted successfully!');
+            // On vide le formulaire
+            document.getElementById('review-form').reset();
+            // On rafraîchit les détails pour voir la nouvelle review
+            fetchPlaceDetails(placeId, token);
+        } else {
+            const errorData = await response.json();
+            alert('Error: ' + (errorData.error || 'Failed to submit review'));
+        }
+    } catch (error) {
+        console.error('Fetch error:', error);
+        alert('Could not connect to the server.');
+    }
 }
